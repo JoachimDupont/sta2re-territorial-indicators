@@ -134,7 +134,6 @@ def aggregate_groups(sectors: gpd.GeoDataFrame, group_cols: list[str], unit_type
         icu_area = very_area + intense_area
         pop_est = float(group["icu_population_est"].sum())
         pop_very_est = float(group["icu_population_very_intense_est"].sum())
-        pop_very_est = float(group["icu_population_very_intense_est"].sum())
         row = {
             "unit_type": unit_type,
             "unit_id": "|".join(str(v) for v in key),
@@ -178,6 +177,7 @@ def aggregate_communes(sectors: gpd.GeoDataFrame, communes: gpd.GeoDataFrame, po
         intense_area = float(group["icu_area_intense_m2"].sum())
         icu_area = very_area + intense_area
         pop_est = float(group["icu_population_est"].sum())
+        pop_very_est = float(group["icu_population_very_intense_est"].sum())
         rows.append({
             "unit_type": "commune",
             "unit_id": code,
@@ -193,6 +193,8 @@ def aggregate_communes(sectors: gpd.GeoDataFrame, communes: gpd.GeoDataFrame, po
             "icu_area_total_m2": icu_area,
             "icu_surface_pct": icu_area / covered_area * 100 if covered_area else np.nan,
             "icu_population_est": pop_est,
+            "icu_population_very_intense_est": pop_very_est,
+            "icu_population_very_intense_pct": pop_very_est / pop_total * 100 if pop_total else np.nan,
             "icu_population_pct": pop_est / pop_total * 100 if pop_total else np.nan,
             "raster_coverage_pct": min(100.0, covered_area / geom.area * 100) if geom.area else np.nan,
             "source_population": SOURCE_POPULATION,
