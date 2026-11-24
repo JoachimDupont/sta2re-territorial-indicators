@@ -1,16 +1,20 @@
-# Pilote ICU — communes wallonnes frontalières avec la France
+# Pilote ICU — périmètre des 29 communes wallonnes STA²RE
 
 ## Objectif
-Estimer, pour les communes wallonnes partageant une limite terrestre avec la France, la part de surface et la population exposées aux classes d'îlot de chaleur urbain (ICU) cartographiées par l'AWAC.
+Estimer, pour les 29 communes définies par le porteur du projet, la part de surface et la population exposées aux classes d'îlot de chaleur urbain (ICU) cartographiées par l'AWAC.
+
+## Périmètre territorial
+Le périmètre d'étude est une liste explicite de 29 communes, réparties dans trois provinces :
+- Hainaut (15) : Comines-Warneton, Mouscron, Estaimpuis, Tournai, Brunehaut, Rumes, Péruwelz, Hensies, Quiévrain, Honnelles, Dour, Quévy, Erquelinnes, Momignies et Chimay.
+- Namur (7) : Couvin, Viroinval, Doische, Hastière, Beauraing, Gedinne et Vresse-sur-Semois.
+- Luxembourg (7) : Aubange, Arlon, Musson, Virton, Rouvroy, Florenville et Bouillon.
+
+Cette liste constitue le périmètre opérationnel du pilote. Elle remplace la sélection automatique par intersection de frontières, qui s'est révélée incomplète. Le script sélectionne ces communes dans le référentiel communal wallon et échoue explicitement si l'une d'elles n'est pas retrouvée. La présence dans le périmètre ne constitue donc pas une nouvelle affirmation juridique ou géométrique sur le statut de commune frontalière.
 
 ## Sources
 - Limites communales wallonnes : service ArcGIS REST du Géoportail de la Wallonie, couche Commune (ID 3), source AGDP.
-- Communes françaises : API officielle geo.api.gouv.fr, départements français limitrophes de la Belgique.
 - Secteurs statistiques 2026 et population par secteur statistique 2026 : Statbel, fichiers open data.
 - ICU : service ArcGIS REST AWAC_VILLES_ALEAS_CHALEUR_ICU, couche 12 « Ilot de chaleur urbain (ICU) », raster en EPSG:31370.
-
-## Définition du territoire pilote
-Une commune wallonne est retenue si sa limite polygonale partage une longueur de frontière non nulle avec au moins une commune française. Le script utilise les communes françaises des départements 02, 08, 54, 55, 57 et 59 comme candidats géographiques, puis vérifie l'adjacence géométrique. Cette sélection est à contrôler visuellement et à comparer au référentiel national CadGIS avant publication définitive.
 
 ## Indicateurs
 Pour chaque secteur statistique puis par agrégation communale :
@@ -34,4 +38,3 @@ Pour chaque secteur statistique puis par agrégation communale :
 - https://geoservices.wallonie.be/arcgis/rest/services/CHGMT_CLIMAT/AWAC_VILLES_ALEAS_CHALEUR_ICU/MapServer/12
 - https://geoservices.wallonie.be/arcgis/rest/services/LIMITES/LIMITES_ADMINISTRATIVES/MapServer/3
 - https://statbel.fgov.be/fr/open-data?category=209
-- https://geo.api.gouv.fr/decoupage-administratif/communes
