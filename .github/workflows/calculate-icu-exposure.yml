@@ -1,0 +1,45 @@
+name: Calculate STA2RE ICU exposure indicators
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/calculate_icu_exposure.py"
+      - ".github/workflows/calculate-icu-exposure.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  calculate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Build fixed 29-commune study area
+        run: python scripts/identify_border_communes.py
+      - name: Download and inspect official source data
+        run: python scripts/inspect_icu_sources.py
+      - name: Calculate ICU exposure indicators
+        run: python scripts/calculate_icu_exposure.py
+      - name: Upload GeoJSON, CSV and QA report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sta2re-icu-exposure-2026
+          path: |
+            data/processed/icu_exposure_sectors_2026.geojson
+            data/processed/icu_exposure_sectors_2026.csv
+            data/processed/icu_exposure_quartiers_2026.geojson
+            data/processed/icu_exposure_quartiers_2026.csv
+            data/processed/icu_exposure_communes_2026.geojson
+            data/processed/icu_exposure_communes_2026.csv
+            data/interim/icu_exposure_qa_2026.json
+          if-no-files-found: error
