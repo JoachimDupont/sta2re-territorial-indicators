@@ -249,7 +249,7 @@ def flood_metrics(sectors: gpd.GeoDataFrame, raster_path: Path):
 
 def aggregate(sectors: gpd.GeoDataFrame, group_cols: list[str], unit_type: str, communes=None, pop_by_commune=None):
     rows = []
-    metric_cols = [c for c in sectors.columns if c.startswith(("fire_area_", "fire_population_", "flood_area_", "flood_population_", "flood_raster_"))]
+    metric_cols = [c for c in sectors.columns if c.startswith(("fire_area_", "fire_population_", "flood_")) and pd.api.types.is_numeric_dtype(sectors[c])]
     for key, group in sectors.groupby(group_cols, dropna=False, sort=True):
         if not isinstance(key, tuple):
             key = (key,)
@@ -279,7 +279,7 @@ def aggregate(sectors: gpd.GeoDataFrame, group_cols: list[str], unit_type: str, 
 def aggregate_communes(sectors, communes, population):
     rows = []
     pop_by_commune = population.groupby("CD_REFNIS")["TOTAL"].sum()
-    metric_cols = [c for c in sectors.columns if c.startswith(("fire_area_", "fire_population_", "flood_area_", "flood_population_", "flood_raster_"))]
+    metric_cols = [c for c in sectors.columns if c.startswith(("fire_area_", "fire_population_", "flood_")) and pd.api.types.is_numeric_dtype(sectors[c])]
     for _, commune in communes.iterrows():
         code = str(commune["ADMUKEY"])
         group = sectors[sectors["cd_munty_refnis"].astype(str) == code]
