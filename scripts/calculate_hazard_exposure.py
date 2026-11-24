@@ -109,14 +109,26 @@ def fire_renderer_metadata():
     if "error" in meta:
         raise RuntimeError(f"Fire MapServer metadata error: {meta['error']}")
     renderer = (meta.get("drawingInfo") or {}).get("renderer") or {}
-    infos = renderer.get("uniqueValueInfos") or []
-    field = renderer.get("field1")
-    classes = [{"value": str(x.get("value")), "label": str(x.get("label") or x.get("value"))}
-               for x in infos if x.get("value") is not None]
+    unique_infos = renderer.get("uniqueValueInfos") or []
+    break_infos = renderer.get("classBreakInfos") or []
+    field = renderer.get("field1") or renderer.get("field")
+    if unique_infos:
+        classes = [{"value": str(x.get("value")), "label": str(x.get("label") or x.get("value"))}
+                   for x in unique_infos if x.get("value") is not None]
+    elif break_infos:
+        lower = float(renderer.get("minValue", 0))
+        classes = []
+        for i, item in enumerate(break_infos, start=1):
+            upper = float(item.get("classMaxValue"))
+            classes.append({"value": str(i), "min": lower, "max": upper,
+                            "label": str(item.get("label") or f"Classe {i}")})
+            lower = upper
+    else:
+        classes = []
     if not field or len(classes) != 4:
         raise RuntimeError(
             "Cannot safely identify the four fire-probability classes from the official renderer. "
-            f"Renderer type={renderer.get('type')}, field1={field}, classes={classes}"
+            f"Renderer type={renderer.get('type')}, field={field}, classes={classes}"
         )
     return meta, field, classes
 
@@ -144,7 +156,12 @@ def fire_metrics(sectors: gpd.GeoDataFrame, fire: gpd.GeoDataFrame, field: str, 
     # same class are not counted twice.
     class_geometries = {}
     for item in classes:
-        subset = fire.loc[fire[field].astype(str) == item["value"], "geometry"]
+        if "min" in item and "max" in item:
+            values = pd.to_numeric(fire[field], errors="coerce")
+            mask = (values >= item["min"]) & (values <= item["max"] if item is classes[-1] else values < item["max"])
+            subset = fire.loc[mask, "geometry"]
+        else:
+            subset = fire.loc[fire[field].astype(str) == item["value"], "geometry"]
         class_geometries[item["value"]] = unary_union(list(subset)) if len(subset) else None
     total_union = unary_union([g for g in class_geometries.values() if g is not None])
     rows = []
