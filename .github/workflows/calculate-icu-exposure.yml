@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "scripts/calculate_icu_exposure.py"
+      - "scripts/calculate_hazard_exposure.py"
       - ".github/workflows/calculate-icu-exposure.yml"
 
 permissions:
@@ -30,6 +31,8 @@ jobs:
         run: python scripts/inspect_icu_sources.py
       - name: Calculate ICU exposure indicators
         run: python scripts/calculate_icu_exposure.py
+      - name: Calculate forest-fire and flood exposure indicators
+        run: python scripts/calculate_hazard_exposure.py
       - name: Publish GeoJSON to the website
         run: |
           mkdir -p site/data
@@ -37,6 +40,13 @@ jobs:
           cp data/processed/icu_exposure_quartiers_2026.geojson site/data/
           cp data/processed/icu_exposure_communes_2026.geojson site/data/
           cp data/interim/icu_exposure_qa_2026.json site/data/
+          cp data/processed/fire_exposure_sectors_2026.geojson site/data/
+          cp data/processed/fire_exposure_quartiers_2026.geojson site/data/
+          cp data/processed/fire_exposure_communes_2026.geojson site/data/
+          cp data/processed/flood_exposure_sectors_2026.geojson site/data/
+          cp data/processed/flood_exposure_quartiers_2026.geojson site/data/
+          cp data/processed/flood_exposure_communes_2026.geojson site/data/
+          cp data/interim/hazard_exposure_qa_2026.json site/data/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add site/data/
@@ -48,7 +58,7 @@ jobs:
       - name: Upload GeoJSON, CSV and QA report
         uses: actions/upload-artifact@v4
         with:
-          name: sta2re-icu-exposure-2026
+          name: sta2re-territorial-hazard-exposure-2026
           path: |
             data/processed/icu_exposure_sectors_2026.geojson
             data/processed/icu_exposure_sectors_2026.csv
@@ -57,4 +67,17 @@ jobs:
             data/processed/icu_exposure_communes_2026.geojson
             data/processed/icu_exposure_communes_2026.csv
             data/interim/icu_exposure_qa_2026.json
+            data/processed/fire_exposure_sectors_2026.geojson
+            data/processed/fire_exposure_sectors_2026.csv
+            data/processed/fire_exposure_quartiers_2026.geojson
+            data/processed/fire_exposure_quartiers_2026.csv
+            data/processed/fire_exposure_communes_2026.geojson
+            data/processed/fire_exposure_communes_2026.csv
+            data/processed/flood_exposure_sectors_2026.geojson
+            data/processed/flood_exposure_sectors_2026.csv
+            data/processed/flood_exposure_quartiers_2026.geojson
+            data/processed/flood_exposure_quartiers_2026.csv
+            data/processed/flood_exposure_communes_2026.geojson
+            data/processed/flood_exposure_communes_2026.csv
+            data/interim/hazard_exposure_qa_2026.json
           if-no-files-found: error
