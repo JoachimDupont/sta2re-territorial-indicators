@@ -210,37 +210,67 @@ def load_fire_layer():
     return fire, field, classes, meta
 
 def fire_metrics(sectors: gpd.GeoDataFrame, fire: gpd.GeoDataFrame, field: str, classes: list[dict]):
-    # Build one dissolved geometry per class, so overlapping source features of the
-    # same class are not counted twice.
-    class_geometries = {}
-    for item in classes:
-        if "min" in item and "max" in item:
-            values = pd.to_numeric(fire[field], errors="coerce")
-            mask = (values >= item["min"]) & (values <= item["max"] if item is classes[-1] else values < item["max"])
-            subset = fire.loc[mask, "geometry"]
-        else:
-            subset = fire.loc[fire[field].astype(str) == item["value"], "geometry"]
-        class_geometries[item["value"]] = unary_union(list(subset)) if len(subset) else None
-    total_union = unary_union([g for g in class_geometries.values() if g is not None])
+    """Intersect each sector only with nearby fire polygons (spatial-index filtered).
+
+    Avoids dissolving the complete Walloon fire layer into several huge geometries
+    before the sector loop, which was the likely computational bottleneck.
+    """
+    print(f"Building fire spatial index for {len(fire):,} polygons...", flush=True)
+    spatial_index = fire.sindex
+    fire_values = fire[field].astype(str).to_numpy()
+    fire_geometries = fire.geometry
     rows = []
-    for _, sector in sectors.iterrows():
+    total_sectors = len(sectors)
+
+    for sector_number, (_, sector) in enumerate(sectors.iterrows(), start=1):
         geom = sector.geometry
+        # Positions are returned by the GeoPandas spatial index, not dataframe labels.
+        candidate_positions = spatial_index.query(geom, predicate="intersects")
+        candidate_positions = np.asarray(candidate_positions, dtype=int)
+        candidate_geometries = fire_geometries.iloc[candidate_positions]
+        candidate_values = fire_values[candidate_positions]
+
         row = {}
-        total_geom = geom.intersection(total_union) if total_union is not None else None
-        total_area = total_geom.area if total_geom is not None and not total_geom.is_empty else 0.0
+        if len(candidate_positions):
+            total_union = unary_union(list(candidate_geometries))
+            total_geom = geom.intersection(total_union)
+            total_area = total_geom.area if not total_geom.is_empty else 0.0
+        else:
+            total_area = 0.0
+
         row["fire_area_total_m2"] = float(total_area)
         row["fire_population_est"] = float(sector["population_total"]) * total_area / geom.area if geom.area else 0.0
+
         for i, item in enumerate(classes, start=1):
-            class_geom = class_geometries[item["value"]]
-            inter = geom.intersection(class_geom) if class_geom is not None else None
-            area = inter.area if inter is not None and not inter.is_empty else 0.0
+            if "min" in item and "max" in item:
+                numeric_values = pd.to_numeric(pd.Series(candidate_values), errors="coerce").to_numpy()
+                mask = (numeric_values >= item["min"]) & (
+                    numeric_values <= item["max"] if item is classes[-1] else numeric_values < item["max"]
+                )
+            else:
+                mask = candidate_values == item["value"]
+
+            selected_geometries = candidate_geometries.iloc[np.flatnonzero(mask)]
+            if len(selected_geometries):
+                class_union = unary_union(list(selected_geometries))
+                intersection = geom.intersection(class_union)
+                area = intersection.area if not intersection.is_empty else 0.0
+            else:
+                area = 0.0
+
             row[f"fire_area_class_{i}_m2"] = float(area)
             row[f"fire_population_class_{i}_est"] = float(sector["population_total"]) * area / geom.area if geom.area else 0.0
             row[f"fire_population_class_{i}_pct"] = row[f"fire_population_class_{i}_est"] / sector["population_total"] * 100 if sector["population_total"] else np.nan
             row[f"fire_area_class_{i}_pct"] = area / geom.area * 100 if geom.area else np.nan
+
         row["fire_population_pct"] = row["fire_population_est"] / sector["population_total"] * 100 if sector["population_total"] else np.nan
         row["fire_area_pct"] = row["fire_area_total_m2"] / geom.area * 100 if geom.area else np.nan
         rows.append(row)
+
+        if sector_number == 1 or sector_number % 50 == 0 or sector_number == total_sectors:
+            print(f"Fire intersections: {sector_number}/{total_sectors} sectors; {len(candidate_positions)} candidate polygons in latest sector.", flush=True)
+
+    print("Fire spatial intersections completed.", flush=True)
     return pd.DataFrame(rows, index=sectors.index)
 
 def flood_metrics(sectors: gpd.GeoDataFrame, raster_path: Path):
@@ -252,7 +282,7 @@ def flood_metrics(sectors: gpd.GeoDataFrame, raster_path: Path):
         if not pixel_area:
             raise RuntimeError("Flood raster has invalid pixel area.")
         observed = set()
-        for _, sector in sectors.iterrows():
+        for sector_number, (_, sector) in enumerate(sectors.iterrows(), start=1):
             geom = sector.geometry
             row = {}
             try:
@@ -302,7 +332,9 @@ def flood_metrics(sectors: gpd.GeoDataFrame, raster_path: Path):
                     row[f"flood_{kind}_area_{level}_m2"] = float(area)
                     row[f"flood_{kind}_population_{level}_est"] = float(sector["population_total"]) * area / geom.area if geom.area else 0.0
             rows.append(row)
-        print(f"Flood raster: {ds.width}x{ds.height}, resolution={ds.res}, nodata={ds.nodata}, pixel_area={pixel_area}; observed codes={sorted(observed)}")
+            if sector_number == 1 or sector_number % 50 == 0 or sector_number == len(sectors):
+                print(f"Flood raster processing: {sector_number}/{len(sectors)} sectors.", flush=True)
+        print(f"Flood raster: {ds.width}x{ds.height}, resolution={ds.res}, nodata={ds.nodata}, pixel_area={pixel_area}; observed codes={sorted(observed)}", flush=True)
     return pd.DataFrame(rows, index=sectors.index), {"pixel_area_m2": float(pixel_area), "observed_codes": sorted(int(x) for x in observed)}
 
 def aggregate(sectors: gpd.GeoDataFrame, group_cols: list[str], unit_type: str, communes=None, pop_by_commune=None):
