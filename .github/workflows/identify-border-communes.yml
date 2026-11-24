@@ -1,4 +1,4 @@
-name: Identify Walloon border communes
+name: Build STA²RE study-area municipality reference
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
     paths:
       - "scripts/identify_border_communes.py"
       - "requirements.txt"
+      - "docs/methodologie_icu.md"
       - ".github/workflows/identify-border-communes.yml"
 
 permissions:
@@ -25,12 +26,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Identify communes
+      - name: Build municipality reference
         run: python scripts/identify_border_communes.py
       - name: Upload GeoJSON and CSV
         uses: actions/upload-artifact@v4
         with:
-          name: communes-wallonie-frontiere-france
+          name: communes-zone-etude-icu
           path: |
-            data/reference/communes_wallonie_frontiere_france.geojson
-            data/reference/communes_wallonie_frontiere_france.csv
+            data/reference/communes_zone_etude_icu.geojson
+            data/reference/communes_zone_etude_icu.csv
