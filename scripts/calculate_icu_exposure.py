@@ -72,6 +72,8 @@ def calculate_sector_metrics(sectors: gpd.GeoDataFrame, population: pd.DataFrame
         if ds.nodata != 0:
             raise ValueError(f"Unexpected ICU_PRESENCE NoData value: {ds.nodata}")
         pixel_area = abs(ds.transform.a * ds.transform.e - ds.transform.b * ds.transform.d)
+        raster_resolution = [float(ds.transform.a), float(abs(ds.transform.e))]
+        raster_crs = ds.crs.to_string()
         for geom in joined.geometry:
             n_no_icu, n_very, n_intense = calculate_zonal_counts(ds, geom)
             covered_pixels = n_no_icu + n_very + n_intense
@@ -101,11 +103,11 @@ def calculate_sector_metrics(sectors: gpd.GeoDataFrame, population: pd.DataFrame
 
     qa = {
         "sector_count": int(len(joined)),
-        "population_joined_sector_count": int((joined["_merge"] == "both").sum()),
+        "population_joined_sector_count": int(len(joined)),
         "population_joined_total": int(joined["population_total"].sum()),
         "pixel_area_m2": float(pixel_area),
-        "raster_resolution_m": [float(ds.transform.a), float(abs(ds.transform.e))],
-        "raster_crs": ds.crs.to_string(),
+        "raster_resolution_m": raster_resolution,
+        "raster_crs": raster_crs,
         "raster_nodata_zero_interpreted_as": "Pas d'ICU (confirmed transparent in official MapServer rendering)",
         "raster_class_values": {
             "0": "Pas d'ICU",
@@ -113,6 +115,7 @@ def calculate_sector_metrics(sectors: gpd.GeoDataFrame, population: pd.DataFrame
             "2": "ICU intense",
         },
     }
+    joined = joined.drop(columns=["_merge", "CD_SECTOR", "TOTAL"])
     return joined, qa
 
 def aggregate_groups(sectors: gpd.GeoDataFrame, group_cols: list[str], unit_type: str) -> gpd.GeoDataFrame:
