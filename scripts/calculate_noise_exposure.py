@@ -87,8 +87,9 @@ def class_lower_bound(code: str) -> int:
     match = re.search(r"(?:Lden|Lnight)(\d{2})", str(code), re.I)
     if match:
         return int(match.group(1))
-    if re.search(r"GreaterThan75", str(code), re.I):
-        return 75
+    match = re.search(r"GreaterThan(\\d+)", str(code), re.I)
+    if match:
+        return int(match.group(1))
     raise RuntimeError(f"Unrecognised official noise category code: {code!r}")
 
 def metrics_for_index(sectors: gpd.GeoDataFrame, noise: gpd.GeoDataFrame, prefix: str, index: str):
@@ -136,7 +137,7 @@ def metrics_for_index(sectors: gpd.GeoDataFrame, noise: gpd.GeoDataFrame, prefix
     return pd.DataFrame(rows, index=sectors.index), categories
 
 def aggregate_units(frame: gpd.GeoDataFrame, group_cols: list[str], unit_type: str):
-    metric_cols = [c for c in frame.columns if c.startswith(("road_noise_", "rail_noise_")) and pd.api.types.is_numeric_dtype(frame[c])]
+    metric_cols = [c for c in frame.columns if c.startswith(("road_noise_", "rail_noise_")) and pd.api.types.is_numeric_dtype(frame[c]) and not c.endswith("_lower_db")]
     rows = []
     for key, group in frame.groupby(group_cols, dropna=False, sort=True):
         if not isinstance(key, tuple):
