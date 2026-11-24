@@ -13,7 +13,7 @@ const palette=['#d9eee9','#a7d8ca','#65b7a2','#e6a45b','#c85c45'];
 function color(v){if(v==null||!Number.isFinite(Number(v)))return '#cbd5d9';let n=Number(v);return palette[n<=10?0:n<=25?1:n<=50?2:n<=75?3:4]}
 function propsName(p){return p.sector_name||p.tx_sector_descr_fr||p.quartier_name||p.municipality_name||p.tx_munty_descr_fr||p.unit_id||'Unité territoriale'}
 function fireClasses(p){return [1,2,3,4].map(i=>({i,label:p['fire_class_'+i+'_label']||('Classe '+i)}))}
-function highestFireClass(p){const cs=fireClasses(p);return cs.find(c=>/élev|high|fort|très haut/i.test(c.label))||cs[3]}
+function highestFireClass(p){const cs=fireClasses(p);return cs.find(c=>/très élevé|very high/i.test(c.label))||cs.find(c=>/(?:^|[\\s:])élevé|high/i.test(c.label))||cs[3]}
 function setupIndicators(){
   const cfg=configs[currentHazard],p=allFeatures[0]?.properties||{},select=document.querySelector('#indicator');
   let options=[];
