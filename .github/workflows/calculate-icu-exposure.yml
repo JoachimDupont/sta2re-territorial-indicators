@@ -8,7 +8,7 @@ on:
       - ".github/workflows/calculate-icu-exposure.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   calculate:
@@ -30,6 +30,20 @@ jobs:
         run: python scripts/inspect_icu_sources.py
       - name: Calculate ICU exposure indicators
         run: python scripts/calculate_icu_exposure.py
+      - name: Publish GeoJSON to the website
+        run: |
+          mkdir -p site/data
+          cp data/processed/icu_exposure_sectors_2026.geojson site/data/
+          cp data/processed/icu_exposure_quartiers_2026.geojson site/data/
+          cp data/processed/icu_exposure_communes_2026.geojson site/data/
+          cp data/interim/icu_exposure_qa_2026.json site/data/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/data/
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish ICU indicator data [skip ci]"
+            git push
+          fi
       - name: Upload GeoJSON, CSV and QA report
         uses: actions/upload-artifact@v4
         with:
