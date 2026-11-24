@@ -34,8 +34,8 @@ def get_json(url):
 def render_sample_for_value(path, value):
     """Cross-check raster code against the official MapServer rendered legend color."""
     with rasterio.open(path) as ds:
-        arr=ds.read(1, masked=True)
-        rows, cols=np.where((arr.data == value) & ~np.ma.getmaskarray(arr))
+        arr=ds.read(1)
+        rows, cols=np.where(arr == value)
         if not len(rows): return {"value": int(value), "error":"no sample pixel"}
         row, col=int(rows[len(rows)//2]), int(cols[len(cols)//2])
         x,y=rasterio.transform.xy(ds.transform,row,col,offset="center")
@@ -92,7 +92,7 @@ def main():
     class_render_checks=[]
     if presence:
         with rasterio.open(presence) as ds:
-            vals=np.unique(ds.read(1,masked=True).compressed()).tolist()
+            vals=np.unique(ds.read(1)).tolist()
         class_render_checks=[render_sample_for_value(presence,v) for v in vals]
     report={"statbel":{"geometry_source_url":SECTORS_URL,"population_source_url":POPULATION_URL,
       "geometry_file":extracted.name,"geometry_feature_count":int(len(sectors)),
