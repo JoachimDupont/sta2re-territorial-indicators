@@ -25,6 +25,7 @@ FRENCH_API = "https://geo.api.gouv.fr/communes"
 FRENCH_BORDER_DEPARTMENTS = ["02", "08", "54", "55", "59"]
 METRIC_CRS = "EPSG:31370"
 MIN_SHARED_BOUNDARY_M = 0.5
+BOUNDARY_MATCH_TOLERANCE_M = 5.0
 
 
 def fetch_walloon_municipalities():
@@ -66,14 +67,17 @@ def main():
     walloon = fetch_walloon_municipalities()
     french = fetch_french_border_municipalities()
     french_union = french.geometry.union_all()
-    french_boundary = french_union.boundary
+    # Separate national datasets can differ by a few metres. Use a narrow
+    # tolerance around the French outer boundary, then measure the matching
+    # length on the Walloon municipality boundary.
+    french_boundary_buffer = french_union.boundary.buffer(BOUNDARY_MATCH_TOLERANCE_M)
 
     rows = []
     for _, municipality in walloon.iterrows():
         geom = municipality.geometry
         if geom is None or geom.is_empty:
             continue
-        shared_length = geom.boundary.intersection(french_boundary).length
+        shared_length = geom.boundary.intersection(french_boundary_buffer).length
         if shared_length >= MIN_SHARED_BOUNDARY_M:
             rows.append({
                 **municipality.drop(labels="geometry").to_dict(),
