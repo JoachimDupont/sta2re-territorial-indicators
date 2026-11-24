@@ -49,6 +49,7 @@ function detailRows(f){
   } else {
     const prefix=currentHazard==='roadnoise'?'road_noise':'rail_noise';
     rows.push(['Population estimée — Lden',num(p[prefix+'_lden_population_est'])],['Part de population — Lden',fmt(p[prefix+'_lden_population_pct'])+' %'],['Surface concernée — Lden',fmt(Number(p[prefix+'_lden_area_total_m2']||0)/1e6)+' km²'],['Population à ≥55 dB Lden',num(p[prefix+'_lden_population_ge_55_est'])],['Surface à ≥55 dB Lden',fmt(Number(p[prefix+'_lden_area_ge_55_m2']||0)/1e6)+' km²'],['Population estimée — Lnight',num(p[prefix+'_lnight_population_est'])],['Part de population — Lnight',fmt(p[prefix+'_lnight_population_pct'])+' %'],['Surface concernée — Lnight',fmt(Number(p[prefix+'_lnight_area_total_m2']||0)/1e6)+' km²'],['Population à ≥50 dB Lnight',num(p[prefix+'_lnight_population_ge_50_est'])],['Surface à ≥50 dB Lnight',fmt(Number(p[prefix+'_lnight_area_ge_50_m2']||0)/1e6)+' km²']);
+    for(const index of ['lden','lnight']){for(let i=1;i<=6;i++){const label=p[prefix+'_'+index+'_class_'+i+'_label'];if(label)rows.push([label+' — population',num(p[prefix+'_'+index+'_population_class_'+i+'_est'])],[label+' — surface',fmt(Number(p[prefix+'_'+index+'_area_class_'+i+'_m2']||0)/1e6)+' km²']);}}
     rows.push(['Période de référence','2021'],['Mise à jour du catalogue','19/05/2025']);
   }
   return rows;
