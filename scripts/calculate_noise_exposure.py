@@ -170,7 +170,7 @@ def aggregate_units(frame: gpd.GeoDataFrame, group_cols: list[str], unit_type: s
 def aggregate_communes(frame: gpd.GeoDataFrame, communes: gpd.GeoDataFrame, population: pd.DataFrame):
     rows = []
     pop_by_commune = population.groupby("CD_REFNIS")["TOTAL"].sum()
-    metric_cols = [c for c in frame.columns if c.startswith(("road_noise_", "rail_noise_")) and pd.api.types.is_numeric_dtype(frame[c])]
+    metric_cols = [c for c in frame.columns if c.startswith(("road_noise_", "rail_noise_")) and pd.api.types.is_numeric_dtype(frame[c]) and not c.endswith("_lower_db")]
     for _, commune in communes.iterrows():
         code = str(commune["ADMUKEY"])
         group = frame[frame["cd_munty_refnis"].astype(str) == code]
