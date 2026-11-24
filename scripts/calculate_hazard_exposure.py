@@ -161,6 +161,8 @@ def fire_metrics(sectors: gpd.GeoDataFrame, fire: gpd.GeoDataFrame, field: str, 
             area = inter.area if inter is not None and not inter.is_empty else 0.0
             row[f"fire_area_class_{i}_m2"] = float(area)
             row[f"fire_population_class_{i}_est"] = float(sector["population_total"]) * area / geom.area if geom.area else 0.0
+            row[f"fire_population_class_{i}_pct"] = row[f"fire_population_class_{i}_est"] / sector["population_total"] * 100 if sector["population_total"] else np.nan
+            row[f"fire_area_class_{i}_pct"] = area / geom.area * 100 if geom.area else np.nan
         row["fire_population_pct"] = row["fire_population_est"] / sector["population_total"] * 100 if sector["population_total"] else np.nan
         row["fire_area_pct"] = row["fire_area_total_m2"] / geom.area * 100 if geom.area else np.nan
         rows.append(row)
@@ -315,6 +317,10 @@ def main():
     fire_stem = "fire_exposure"
     flood_stem = "flood_exposure"
     for gdf, stem in ((sector_output, "sectors"), (quarters, "quartiers"), (communes_out, "communes")):
+        for i, item in enumerate(fire_classes, start=1):
+            gdf[f"fire_class_{i}_label"] = item["label"]
+            gdf[f"fire_population_class_{i}_pct"] = gdf[f"fire_population_class_{i}_est"] / gdf["population_total"] * 100
+            gdf[f"fire_area_class_{i}_pct"] = gdf[f"fire_area_class_{i}_m2"] / gdf.geometry.area * 100
         export(gdf, f"{fire_stem}_{stem}_2026")
         export(gdf, f"{flood_stem}_{stem}_2026")
 
