@@ -197,6 +197,7 @@ def main():
     sectors, communes, population = load_population_sectors()
     bounds = sectors.total_bounds
     output = sectors.copy()
+    category_metadata = {}
     qa = {
         "study_communes": int(len(communes)),
         "study_sectors": int(len(sectors)),
@@ -210,6 +211,7 @@ def main():
             noise = query_layer(config["service"], layer_id, tuple(bounds))
             stats, categories = metrics_for_index(sectors, noise, prefix, index)
             output = gpd.GeoDataFrame(pd.concat([output, stats], axis=1), geometry="geometry", crs=sectors.crs)
+            category_metadata[f"{prefix}_{index}"] = categories
             qa["noise_sources"][f"{source_key}_{index}"] = {
                 "source": config["catalogue"], "service_layer": f"{config['service']}/{layer_id}",
                 "observation_period": config["observation"], "catalogue_updated": config["updated"],
@@ -226,6 +228,9 @@ def main():
     quarters = aggregate_units(output, ["cd_munty_refnis", "cd_quarter"], "quartier_statistique")
     municipalities = aggregate_communes(output, communes, population)
     for gdf, scale in ((output, "sectors"), (quarters, "quartiers"), (municipalities, "communes")):
+        for metric_prefix, categories in category_metadata.items():
+            for i, item in enumerate(categories, start=1):
+                gdf[f"{metric_prefix}_class_{i}_label"] = item["label"]
         export(gdf, f"noise_exposure_{scale}_2026")
     qa["population_estimated_exposed"] = {
         source: {index: float(municipalities[f"{source}_noise_{index}_population_est"].sum())
