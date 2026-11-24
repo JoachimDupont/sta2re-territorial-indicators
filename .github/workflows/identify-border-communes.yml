@@ -2,6 +2,11 @@ name: Identify Walloon border communes
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "scripts/identify_border_communes.py"
+      - "requirements.txt"
+      - ".github/workflows/identify-border-communes.yml"
 
 permissions:
   contents: read
