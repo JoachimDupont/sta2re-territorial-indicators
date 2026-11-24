@@ -9,6 +9,10 @@ on:
       - "scripts/calculate_noise_exposure.py"
       - ".github/workflows/calculate-icu-exposure.yml"
 
+concurrency:
+  group: sta2re-territorial-indicators-calculation
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
