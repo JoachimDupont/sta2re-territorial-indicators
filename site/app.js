@@ -39,7 +39,7 @@ function detailRows(f){
   } else {
     rows.push(['Population estimée exposée',num(p.flood_population_est)],['Part de population estimée',fmt(p.flood_population_pct)+' %'],['Surface exposée',fmt(Number(p.flood_area_total_m2||0)/1e6)+' km²']);
     [['very_low','Très faible'],['low','Faible'],['medium','Moyen'],['high','Élevé']].forEach(([k,label])=>rows.push(['Aléa '+label+' — population',num(p['flood_population_'+k+'_est'])],['Aléa '+label+' — surface',fmt(Number(p['flood_area_'+k+'_m2']||0)/1e6)+' km²']));
-    rows.push(['Débordement + ruissellement — aléa élevé',fmt(Number(p.flood_combined_area_high_m2||0)/1e6)+' km²'],['Couverture raster',fmt(p.flood_raster_coverage_pct)+' %'],['Mise à jour cartographie','18/02/2021']);
+    const typeArea=Number(p.flood_overflow_area_high_m2||0)+Number(p.flood_runoff_area_high_m2||0)+Number(p.flood_combined_area_high_m2||0);if(typeArea>0)rows.push(['Débordement — aléa élevé',fmt(Number(p.flood_overflow_area_high_m2||0)/1e6)+' km²'],['Ruissellement — aléa élevé',fmt(Number(p.flood_runoff_area_high_m2||0)/1e6)+' km²'],['Débordement + ruissellement — aléa élevé',fmt(Number(p.flood_combined_area_high_m2||0)/1e6)+' km²']);rows.push(['Couverture raster',fmt(p.flood_raster_coverage_pct)+' %'],['Mise à jour cartographie','18/02/2021']);
   }
   return rows;
 }
