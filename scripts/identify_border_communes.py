@@ -21,7 +21,8 @@ WALLONIA_MUNICIPALITIES = (
     "LIMITES/LIMITES_ADMINISTRATIVES/MapServer/3/query"
 )
 FRENCH_API = "https://geo.api.gouv.fr/communes"
-FRENCH_BORDER_DEPARTMENTS = ["02", "08", "54", "55", "57", "59"]
+# Departments identified as bordering Belgium; geometry performs the final test.
+FRENCH_BORDER_DEPARTMENTS = ["02", "08", "54", "55", "59"]
 METRIC_CRS = "EPSG:31370"
 MIN_SHARED_BOUNDARY_M = 0.5
 
@@ -72,8 +73,7 @@ def main():
         geom = municipality.geometry
         if geom is None or geom.is_empty:
             continue
-        shared = geom.boundary.intersection(french_boundary)
-        shared_length = shared.length
+        shared_length = geom.boundary.intersection(french_boundary).length
         if shared_length >= MIN_SHARED_BOUNDARY_M:
             rows.append({
                 **municipality.drop(labels="geometry").to_dict(),
