@@ -1,4 +1,6 @@
-const map=L.map('map').setView([50.45,3.9],8);\nconst osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>',maxZoom:19}).addTo(map);\nL.control.layers({'OpenStreetMap':osm},null,{collapsed:true}).addTo(map);
+const map=L.map('map').setView([50.45,3.9],8);
+const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>',maxZoom:19}).addTo(map);
+L.control.layers({'OpenStreetMap':osm},null,{collapsed:true}).addTo(map);
 const files={communes:'icu_exposure_communes_2026.geojson',quartiers:'icu_exposure_quartiers_2026.geojson',sectors:'icu_exposure_sectors_2026.geojson'};let layer=null,allFeatures=[];
 const fmt=n=>Number.isFinite(Number(n))?new Intl.NumberFormat('fr-BE',{maximumFractionDigits:1}).format(Number(n)): '—';
 const num=n=>new Intl.NumberFormat('fr-BE',{maximumFractionDigits:0}).format(Number(n)||0);
