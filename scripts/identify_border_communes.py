@@ -1,13 +1,14 @@
-"""Identify Walloon municipalities sharing a land boundary with France.
+"""Select the user-defined 29 Walloon municipalities for the STA²RE ICU pilot.
 
 Run:
     python scripts/identify_border_communes.py
 
 Outputs:
-    data/reference/communes_wallonie_frontiere_france.geojson
-    data/reference/communes_wallonie_frontiere_france.csv
+    data/reference/communes_zone_etude_icu.geojson
+    data/reference/communes_zone_etude_icu.csv
 """
 from pathlib import Path
+import unicodedata
 
 import geopandas as gpd
 import requests
@@ -20,12 +21,30 @@ WALLONIA_MUNICIPALITIES = (
     "https://geoservices.wallonie.be/arcgis/rest/services/"
     "LIMITES/LIMITES_ADMINISTRATIVES/MapServer/3/query"
 )
-FRENCH_API = "https://geo.api.gouv.fr/communes"
-# Departments identified as bordering Belgium; geometry performs the final test.
-FRENCH_BORDER_DEPARTMENTS = ["02", "08", "54", "55", "59"]
 METRIC_CRS = "EPSG:31370"
-MIN_SHARED_BOUNDARY_M = 0.5
-BOUNDARY_MATCH_TOLERANCE_M = 5.0
+
+# Explicit study perimeter supplied by the project owner.
+TARGET_MUNICIPALITIES = {
+    "Hainaut": [
+        "Comines-Warneton", "Mouscron", "Estaimpuis", "Tournai", "Brunehaut",
+        "Rumes", "Péruwelz", "Hensies", "Quiévrain", "Honnelles", "Dour",
+        "Quévy", "Erquelinnes", "Momignies", "Chimay",
+    ],
+    "Namur": [
+        "Couvin", "Viroinval", "Doische", "Hastière", "Beauraing", "Gedinne",
+        "Vresse-sur-Semois",
+    ],
+    "Luxembourg": [
+        "Aubange", "Arlon", "Musson", "Virton", "Rouvroy", "Florenville",
+        "Bouillon",
+    ],
+}
+
+
+def normalize_name(value):
+    value = unicodedata.normalize("NFKD", str(value))
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    return " ".join(value.casefold().replace("’", "'").split())
 
 
 def fetch_walloon_municipalities():
@@ -48,60 +67,45 @@ def fetch_walloon_municipalities():
     return gdf
 
 
-def fetch_french_border_municipalities():
-    params = [("codeDepartement", code) for code in FRENCH_BORDER_DEPARTMENTS]
-    params.extend([
-        ("fields", "nom,code,departement"),
-        ("format", "geojson"),
-        ("geometry", "contour"),
-    ])
-    response = requests.get(FRENCH_API, params=params, timeout=180)
-    response.raise_for_status()
-    payload = response.json()
-    if not payload.get("features"):
-        raise RuntimeError("French communes API returned no geometries.")
-    return gpd.GeoDataFrame.from_features(payload["features"], crs="EPSG:4326").to_crs(METRIC_CRS)
-
-
 def main():
     walloon = fetch_walloon_municipalities()
-    french = fetch_french_border_municipalities()
-    french_union = french.geometry.union_all()
-    # Separate national datasets can differ by a few metres. Use a narrow
-    # tolerance around the French outer boundary, then measure the matching
-    # length on the Walloon municipality boundary.
-    french_boundary_buffer = french_union.boundary.buffer(BOUNDARY_MATCH_TOLERANCE_M)
+    targets = {
+        normalize_name(name): province
+        for province, names in TARGET_MUNICIPALITIES.items()
+        for name in names
+    }
+    walloon["_normalized_name"] = walloon["NAMEFRE"].map(normalize_name)
+    selected = walloon[walloon["_normalized_name"].isin(targets)].copy()
 
-    rows = []
-    for _, municipality in walloon.iterrows():
-        geom = municipality.geometry
-        if geom is None or geom.is_empty:
-            continue
-        shared_length = geom.boundary.intersection(french_boundary_buffer).length
-        if shared_length >= MIN_SHARED_BOUNDARY_M:
-            rows.append({
-                **municipality.drop(labels="geometry").to_dict(),
-                "shared_border_france_m": round(shared_length, 2),
-                "geometry": geom,
-            })
-
-    if not rows:
+    found = set(selected["_normalized_name"])
+    missing = sorted(
+        name for name in targets if name not in found
+    )
+    if missing:
         raise RuntimeError(
-            "No Walloon municipalities matched. Check French departments, "
-            "API response, and coordinate transformations."
+            "Target municipalities not found in Walloon reference: "
+            + ", ".join(missing)
+        )
+    if len(selected) != len(targets):
+        raise RuntimeError(
+            f"Expected {len(targets)} unique municipalities, found {len(selected)}."
         )
 
-    result = gpd.GeoDataFrame(rows, geometry="geometry", crs=METRIC_CRS)
-    result = result.sort_values("NAMEFRE")
-    geojson_path = OUT / "communes_wallonie_frontiere_france.geojson"
-    csv_path = OUT / "communes_wallonie_frontiere_france.csv"
-    result.to_crs("EPSG:4326").to_file(geojson_path, driver="GeoJSON")
-    result.drop(columns="geometry").to_csv(csv_path, index=False)
+    selected["province"] = selected["_normalized_name"].map(targets)
+    selected["selection_method"] = "liste_de_reference_fournie_pour_STA2RE"
+    selected = selected.drop(columns=["_normalized_name"]).sort_values(
+        ["province", "NAMEFRE"]
+    )
+
+    geojson_path = OUT / "communes_zone_etude_icu.geojson"
+    csv_path = OUT / "communes_zone_etude_icu.csv"
+    selected.to_crs("EPSG:4326").to_file(geojson_path, driver="GeoJSON")
+    selected.drop(columns="geometry").to_csv(csv_path, index=False)
 
     print(f"Walloon municipalities queried: {len(walloon)}")
-    print(f"French municipalities queried: {len(french)}")
-    print(f"Bordering Walloon municipalities: {len(result)}")
-    print(result[["NAMEFRE", "ADMUKEY", "shared_border_france_m"]].to_string(index=False))
+    print(f"Target municipalities expected: {len(targets)}")
+    print(f"Target municipalities selected: {len(selected)}")
+    print(selected[["province", "NAMEFRE", "ADMUKEY"]].to_string(index=False))
     print(f"Wrote: {geojson_path}")
     print(f"Wrote: {csv_path}")
 
