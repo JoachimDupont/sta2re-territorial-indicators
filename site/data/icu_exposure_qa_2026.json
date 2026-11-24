@@ -1,0 +1,39 @@
+{
+  "sector_count": 1237,
+  "population_joined_sector_count": 1237,
+  "population_joined_total": 381364,
+  "pixel_area_m2": 6971.842028122662,
+  "raster_resolution_m": [
+    83.53707293693054,
+    83.45805979324074
+  ],
+  "raster_crs": "EPSG:31370",
+  "raster_nodata_zero_interpreted_as": "Pas d'ICU (confirmed transparent in official MapServer rendering)",
+  "raster_class_values": {
+    "0": "Pas d'ICU",
+    "1": "ICU très intense",
+    "2": "ICU intense"
+  },
+  "commune_count": 29,
+  "statistical_quarter_count": 433,
+  "population_total_all_29_communes": 381527,
+  "population_without_locatable_sector": 163,
+  "unlocatable_population_rows": 22,
+  "population_mapped_to_sectors": 381364,
+  "icu_population_est_all_communes": 198719.06243227358,
+  "icu_surface_area_km2_all_communes": 138.6490224132754,
+  "method": {
+    "raster_codes": "0 = Pas d'ICU (transparent); 1 = ICU très intense; 2 = ICU intense",
+    "pixel_inclusion": "pixel centre dans le polygone (all_touched=False)",
+    "icu_surface_pct": "surface ICU intense + très intense / surface raster couverte × 100",
+    "icu_population_est": "population du secteur × part surfacique ICU (hypothèse de répartition uniforme)",
+    "raster_coverage_pct": "surface des pixels du raster dans l'unité / surface géométrique de l'unité × 100",
+    "population_denominator_communes": "population Statbel totale, y compris les personnes sans secteur localisable",
+    "time_reference": "population Statbel 2026 exposée selon la cartographie ICU AWAC disponible, mise à jour le 14/11/2024"
+  },
+  "sources": {
+    "population": "https://statbel.fgov.be/fr/open-data?category=209",
+    "icu_catalogue": "https://geoportail.wallonie.be/catalogue/4073341b-8587-4d71-bf07-b1f07c678b9d.html",
+    "icu_raster": "https://geoservices.wallonie.be/geotraitement/spwdatadownload/results/4073341b-8587-4d71-bf07-b1f07c678b9d/AWAC_ALEAS_CHALEUR_ICU_GEOTIFF_31370.zip"
+  }
+}
