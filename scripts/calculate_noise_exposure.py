@@ -41,41 +41,80 @@ SOURCES = {
     },
 }
 
+def arcgis_json(endpoint: str, params: dict, *, timeout: int, context: str) -> dict:
+    """Request ArcGIS JSON with retries for transient gateway/server failures."""
+    import time
+    last_error = None
+    for attempt in range(1, 6):
+        try:
+            response = requests.get(endpoint, params=params, headers=HEADERS, timeout=timeout)
+            response.raise_for_status()
+            payload = response.json()
+            if "error" in payload:
+                raise RuntimeError(f"ArcGIS error for {context}: {payload['error']}")
+            return payload
+        except (requests.RequestException, ValueError, RuntimeError) as exc:
+            last_error = exc
+            if attempt == 5:
+                break
+            delay = min(8 * attempt, 40)
+            print(f"{context}: attempt {attempt}/5 failed ({exc}); retry in {delay}s", flush=True)
+            time.sleep(delay)
+    raise RuntimeError(f"ArcGIS request failed after 5 attempts ({context}): {last_error}") from last_error
+
+
 def query_layer(service: str, layer_id: int, bounds: tuple[float, float, float, float]) -> gpd.GeoDataFrame:
+    """Fetch features by spatial tiles to avoid 504s on the full study-area extent."""
     endpoint = f"{service}/{layer_id}/query"
     xmin, ymin, xmax, ymax = bounds
-    params = {
-        "where": "1=1",
-        "returnIdsOnly": "true",
-        "returnGeometry": "false",
-        "geometry": json.dumps({"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax, "spatialReference": {"wkid": 31370}}),
-        "geometryType": "esriGeometryEnvelope",
-        "inSR": 31370,
-        "spatialRel": "esriSpatialRelIntersects",
-        "f": "json",
-    }
-    response = requests.get(endpoint, params=params, headers=HEADERS, timeout=120)
-    response.raise_for_status()
-    result = response.json()
-    if "error" in result:
-        raise RuntimeError(f"ArcGIS query failed for {endpoint}: {result['error']}")
-    ids = result.get("objectIds") or []
-    print(f"{endpoint}: {len(ids):,} intersecting noise polygons")
+    tile_size = 25000  # 25 km tiles keep spatial ID queries tractable for the SPW service.
+    object_ids = set()
+    tiles_total = max(1, int(np.ceil((xmax - xmin) / tile_size))) * max(1, int(np.ceil((ymax - ymin) / tile_size)))
+    tile_number = 0
+
+    for x0 in np.arange(xmin, xmax, tile_size):
+        for y0 in np.arange(ymin, ymax, tile_size):
+            tile_number += 1
+            x1, y1 = min(x0 + tile_size, xmax), min(y0 + tile_size, ymax)
+            params = {
+                "where": "1=1",
+                "returnIdsOnly": "true",
+                "returnGeometry": "false",
+                "geometry": json.dumps({
+                    "xmin": float(x0), "ymin": float(y0), "xmax": float(x1), "ymax": float(y1),
+                    "spatialReference": {"wkid": 31370},
+                }),
+                "geometryType": "esriGeometryEnvelope",
+                "inSR": 31370,
+                "spatialRel": "esriSpatialRelIntersects",
+                "f": "json",
+            }
+            payload = arcgis_json(endpoint, params, timeout=90,
+                                  context=f"{endpoint} tile {tile_number}/{tiles_total}")
+            object_ids.update(payload.get("objectIds") or [])
+            if tile_number % 10 == 0 or tile_number == tiles_total:
+                print(f"{endpoint}: spatial search {tile_number}/{tiles_total} tiles; "
+                      f"{len(object_ids):,} unique IDs", flush=True)
+
+    ids = sorted(object_ids)
+    print(f"{endpoint}: {len(ids):,} unique intersecting noise polygons", flush=True)
     features = []
-    for start in range(0, len(ids), 500):
-        batch = ids[start:start + 500]
-        q = requests.get(endpoint, params={
+    batch_size = 250
+    for start in range(0, len(ids), batch_size):
+        batch = ids[start:start + batch_size]
+        params = {
             "objectIds": ",".join(map(str, batch)),
             "outFields": "OBJECTID,SOURCE_CODE,SOURCE_DESCFR,CATEGORY_CODE,CATEGORY_DESCFR",
             "returnGeometry": "true",
             "outSR": 31370,
             "f": "geojson",
-        }, headers=HEADERS, timeout=180)
-        q.raise_for_status()
-        payload = q.json()
-        if "error" in payload:
-            raise RuntimeError(f"ArcGIS feature query failed for {endpoint}: {payload['error']}")
+        }
+        payload = arcgis_json(endpoint, params, timeout=180,
+                              context=f"{endpoint} feature batch {start // batch_size + 1}")
         features.extend(payload.get("features", []))
+        if (start // batch_size + 1) % 10 == 0 or start + batch_size >= len(ids):
+            print(f"{endpoint}: downloaded {len(features):,}/{len(ids):,} features", flush=True)
+
     if not features:
         return gpd.GeoDataFrame(columns=["CATEGORY_CODE", "CATEGORY_DESCFR", "geometry"], geometry="geometry", crs="EPSG:31370")
     frame = gpd.GeoDataFrame.from_features(features, crs="EPSG:31370")
