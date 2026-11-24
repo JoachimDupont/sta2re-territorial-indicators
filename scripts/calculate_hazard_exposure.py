@@ -90,6 +90,7 @@ def load_population_sectors():
     selected = set(communes["ADMUKEY"].astype(str))
     sectors = sectors[sectors["cd_munty_refnis"].astype(str).isin(selected)].copy()
     population = population[population["CD_REFNIS"].astype(str).isin(selected)].copy()
+    population["TOTAL"] = pd.to_numeric(population["TOTAL"], errors="raise").fillna(0).astype(int)
     if sectors.empty or population.empty:
         raise RuntimeError("Statbel geometry or population data is empty for the 29-commune study area.")
     if sectors["cd_sector"].duplicated().any() or population["CD_SECTOR"].duplicated().any():
