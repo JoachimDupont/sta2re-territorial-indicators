@@ -35,6 +35,9 @@ jobs:
           path: |
             data/raw/statbel_sectors_2026_31370.geojson.zip
             data/raw/statbel_population_by_sector_2026.xlsx
+            data/raw/awac_icu_geotiff_31370.zip
+            data/raw/*.tif
+            data/raw/*.tiff
             data/raw/*.geojson
             data/interim/source_schema_report.json
             data/reference/communes_zone_etude_icu.geojson
