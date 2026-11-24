@@ -35,6 +35,7 @@ jobs:
       - name: Download and inspect official source data
         run: python scripts/inspect_icu_sources.py
       - name: Calculate ICU exposure indicators
+        if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[new-indicators]')
         run: python scripts/calculate_icu_exposure.py
       - name: Calculate forest-fire and flood exposure indicators
         run: python scripts/calculate_hazard_exposure.py
