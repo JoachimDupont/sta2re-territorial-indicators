@@ -41,11 +41,11 @@ SOURCES = {
     },
 }
 
-def arcgis_json(endpoint: str, params: dict, *, timeout: int, context: str) -> dict:
+def arcgis_json(endpoint: str, params: dict, *, timeout: int, context: str, attempts: int = 5) -> dict:
     """Request ArcGIS JSON with retries for transient gateway/server failures."""
     import time
     last_error = None
-    for attempt in range(1, 6):
+    for attempt in range(1, attempts + 1):
         try:
             response = requests.get(endpoint, params=params, headers=HEADERS, timeout=timeout)
             response.raise_for_status()
@@ -58,9 +58,43 @@ def arcgis_json(endpoint: str, params: dict, *, timeout: int, context: str) -> d
             if attempt == 5:
                 break
             delay = min(8 * attempt, 40)
-            print(f"{context}: attempt {attempt}/5 failed ({exc}); retry in {delay}s", flush=True)
+            print(f"{context}: attempt {attempt}/{attempts} failed ({exc}); retry in {delay}s", flush=True)
             time.sleep(delay)
-    raise RuntimeError(f"ArcGIS request failed after 5 attempts ({context}): {last_error}") from last_error
+    raise RuntimeError(f"ArcGIS request failed after {attempts} attempts ({context}): {last_error}") from last_error
+
+
+def query_tile_ids(endpoint: str, x0: float, y0: float, x1: float, y1: float,
+                   *, depth: int = 0, max_depth: int = 4) -> set[int]:
+    """Query IDs for a tile; recursively split it when the SPW service times out."""
+    params = {
+        "where": "1=1",
+        "returnIdsOnly": "true",
+        "returnGeometry": "false",
+        "geometry": json.dumps({
+            "xmin": float(x0), "ymin": float(y0), "xmax": float(x1), "ymax": float(y1),
+            "spatialReference": {"wkid": 31370},
+        }),
+        "geometryType": "esriGeometryEnvelope",
+        "inSR": 31370,
+        "spatialRel": "esriSpatialRelIntersects",
+        "f": "json",
+    }
+    context = f"{endpoint} extent ({x0:.0f},{y0:.0f},{x1:.0f},{y1:.0f})"
+    try:
+        payload = arcgis_json(endpoint, params, timeout=90, context=context, attempts=2)
+        return set(payload.get("objectIds") or [])
+    except RuntimeError:
+        if depth >= max_depth:
+            raise
+        xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
+        print(f"{context}: service timeout; subdividing tile (level {depth + 1}/{max_depth})", flush=True)
+        found = set()
+        for xa, ya, xb, yb in (
+            (x0, y0, xm, ym), (xm, y0, x1, ym),
+            (x0, ym, xm, y1), (xm, ym, x1, y1),
+        ):
+            found.update(query_tile_ids(endpoint, xa, ya, xb, yb, depth=depth + 1, max_depth=max_depth))
+        return found
 
 
 def query_layer(service: str, layer_id: int, bounds: tuple[float, float, float, float]) -> gpd.GeoDataFrame:
@@ -76,22 +110,8 @@ def query_layer(service: str, layer_id: int, bounds: tuple[float, float, float, 
         for y0 in np.arange(ymin, ymax, tile_size):
             tile_number += 1
             x1, y1 = min(x0 + tile_size, xmax), min(y0 + tile_size, ymax)
-            params = {
-                "where": "1=1",
-                "returnIdsOnly": "true",
-                "returnGeometry": "false",
-                "geometry": json.dumps({
-                    "xmin": float(x0), "ymin": float(y0), "xmax": float(x1), "ymax": float(y1),
-                    "spatialReference": {"wkid": 31370},
-                }),
-                "geometryType": "esriGeometryEnvelope",
-                "inSR": 31370,
-                "spatialRel": "esriSpatialRelIntersects",
-                "f": "json",
-            }
-            payload = arcgis_json(endpoint, params, timeout=90,
-                                  context=f"{endpoint} tile {tile_number}/{tiles_total}")
-            object_ids.update(payload.get("objectIds") or [])
+            tile_ids = query_tile_ids(endpoint, float(x0), float(y0), float(x1), float(y1))
+            object_ids.update(tile_ids)
             if tile_number % 10 == 0 or tile_number == tiles_total:
                 print(f"{endpoint}: spatial search {tile_number}/{tiles_total} tiles; "
                       f"{len(object_ids):,} unique IDs", flush=True)
