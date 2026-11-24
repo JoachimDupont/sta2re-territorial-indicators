@@ -103,7 +103,7 @@ def load_population_sectors():
     joined = joined.drop(columns=["CD_SECTOR", "TOTAL"])
     return joined, communes, population
 
-def fire_renderer_metadata():
+def fire_renderer_metadata(fire: gpd.GeoDataFrame):
     response = requests.get(FIRE_SERVICE, params={"f": "pjson"}, headers=HEADERS, timeout=90)
     response.raise_for_status()
     meta = response.json()
@@ -125,10 +125,67 @@ def fire_renderer_metadata():
                             "label": str(item.get("label") or f"Classe {i}")})
             lower = upper
     else:
+        # The SPW layer endpoint does not always expose drawingInfo. In that
+        # case, resolve the four official classes from field domains / data
+        # values, and use the service legend labels where available.
+        field_defs = {str(x.get("name", "")).lower(): x for x in meta.get("fields", [])}
+        domain_values = {}
+        for name, definition in field_defs.items():
+            domain = definition.get("domain") or {}
+            coded = domain.get("codedValues") or []
+            if len(coded) == 4:
+                domain_values[name] = {str(x.get("code")): str(x.get("name") or x.get("code")) for x in coded}
+        legend_labels = []
+        try:
+            base = FIRE_SERVICE.rsplit("/0", 1)[0]
+            legend_response = requests.get(base + "/legend", params={"f": "pjson"}, headers=HEADERS, timeout=90)
+            legend_response.raise_for_status()
+            legend_json = legend_response.json()
+            for item in legend_json.get("layers", []):
+                if int(item.get("layerId", -1)) == 0:
+                    legend_labels = [str(x.get("label", "")) for x in item.get("legend", []) if x.get("label")]
+        except Exception as exc:
+            print(f"Fire legend lookup unavailable: {exc}")
+        candidates = []
+        keywords = ("prob", "alea", "class", "classe", "niveau", "risk", "incend", "code", "value")
+        for column in fire.columns:
+            if column == fire.geometry.name:
+                continue
+            values = fire[column].dropna().astype(str).unique().tolist()
+            if len(values) != 4:
+                continue
+            name = str(column).lower()
+            score = 2 if any(word in name for word in keywords) else 0
+            if name in domain_values:
+                score += 5
+            candidates.append((score, str(column), values))
+        candidates.sort(reverse=True)
+        if not candidates or candidates[0][0] == 0:
+            diagnostic = {name: len(fire[name].dropna().unique()) for _, name, _ in candidates}
+            raise RuntimeError(
+                "Could not identify a four-class fire-probability field in the GeoPackage. "
+                f"Layer fields={list(fire.columns)}; four-value candidates={diagnostic}; "
+                f"MapServer fields={list(field_defs)}"
+            )
+        field = candidates[0][1]
+        values = candidates[0][2]
+        try:
+            values = sorted(values, key=lambda x: float(x))
+        except (TypeError, ValueError):
+            values = sorted(values)
+        labels_by_value = domain_values.get(field.lower(), {})
         classes = []
+        for i, value in enumerate(values, start=1):
+            if value in labels_by_value:
+                label = labels_by_value[value]
+            elif len(legend_labels) == 4:
+                label = legend_labels[i - 1]
+            else:
+                label = f"Classe {i} ({value})"
+            classes.append({"value": value, "label": label})
     if not field or len(classes) != 4:
         raise RuntimeError(
-            "Cannot safely identify the four fire-probability classes from the official renderer. "
+            "Cannot safely identify the four fire-probability classes. "
             f"Renderer type={renderer.get('type')}, field={field}, classes={classes}"
         )
     return meta, field, classes
@@ -140,7 +197,7 @@ def load_fire_layer():
     polygon_layers = [str(row[0]) for row in layers if len(row) > 1 and str(row[1]).lower().find("polygon") >= 0]
     layer_name = polygon_layers[0] if polygon_layers else str(layers[0][0])
     fire = gpd.read_file(gpkg, layer=layer_name).to_crs("EPSG:31370")
-    meta, renderer_field, classes = fire_renderer_metadata()
+    meta, renderer_field, classes = fire_renderer_metadata(fire)
     field_lookup = {c.lower(): c for c in fire.columns}
     if renderer_field.lower() not in field_lookup:
         raise RuntimeError(f"Fire class field '{renderer_field}' from MapServer not found in GeoPackage columns {list(fire.columns)}")
