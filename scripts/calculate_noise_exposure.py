@@ -8,14 +8,17 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import requests
+import pyogrio
 from shapely.ops import unary_union
 
 from calculate_hazard_exposure import load_population_sectors, export, INTERIM
 
 ROOT = Path(__file__).resolve().parents[1]
 PROCESSED = ROOT / "data" / "processed"
-HEADERS = {"User-Agent": "STA2RE-territorial-indicators/0.2 (open-data research)"}
+NOISE_FILES = {
+    "road": ROOT / "data" / "raw" / "noise" / "road_noise_2022.gpkg",
+    "rail": ROOT / "data" / "raw" / "noise" / "rail_noise_2022.gpkg",
+}
 
 # The official 2022 strategic-noise services are in EPSG:3812.
 # Road: Lden=layer 0, Lnight=layer 1.
@@ -41,134 +44,38 @@ SOURCES = {
     },
 }
 
-def arcgis_json(endpoint: str, params: dict, *, timeout: int, context: str, attempts: int = 5) -> dict:
-    """Request ArcGIS JSON with retries for transient gateway/server failures."""
-    import time
-    last_error = None
-    for attempt in range(1, attempts + 1):
-        try:
-            response = requests.get(endpoint, params=params, headers=HEADERS, timeout=timeout)
-            response.raise_for_status()
-            payload = response.json()
-            if "error" in payload:
-                raise RuntimeError(f"ArcGIS error for {context}: {payload['error']}")
-            return payload
-        except (requests.RequestException, ValueError, RuntimeError) as exc:
-            last_error = exc
-            if attempt == attempts:
-                break
-            delay = min(8 * attempt, 40)
-            print(f"{context}: attempt {attempt}/{attempts} failed ({exc}); retry in {delay}s", flush=True)
-            time.sleep(delay)
-    raise RuntimeError(f"ArcGIS request failed after {attempts} attempts ({context}): {last_error}") from last_error
-
-
-def query_tile_ids(endpoint: str, x0: float, y0: float, x1: float, y1: float,
-                   *, depth: int = 0, max_depth: int = 4) -> set[int]:
-    """Query IDs for a tile; recursively split it when the SPW service times out."""
-    params = {
-        "where": "1=1",
-        "returnIdsOnly": "true",
-        "returnGeometry": "false",
-        "geometry": json.dumps({
-            "xmin": float(x0), "ymin": float(y0), "xmax": float(x1), "ymax": float(y1),
-            "spatialReference": {"wkid": 31370},
-        }),
-        "geometryType": "esriGeometryEnvelope",
-        "inSR": 31370,
-        "spatialRel": "esriSpatialRelIntersects",
-        "f": "json",
-    }
-    context = f"{endpoint} extent ({x0:.0f},{y0:.0f},{x1:.0f},{y1:.0f})"
-    try:
-        payload = arcgis_json(endpoint, params, timeout=90, context=context, attempts=2)
-        return set(payload.get("objectIds") or [])
-    except RuntimeError:
-        if depth >= max_depth:
-            raise
-        xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
-        print(f"{context}: service timeout; subdividing tile (level {depth + 1}/{max_depth})", flush=True)
-        found = set()
-        for xa, ya, xb, yb in (
-            (x0, y0, xm, ym), (xm, y0, x1, ym),
-            (x0, ym, xm, y1), (xm, ym, x1, y1),
-        ):
-            found.update(query_tile_ids(endpoint, xa, ya, xb, yb, depth=depth + 1, max_depth=max_depth))
-        return found
-
-
-def query_layer(service: str, layer_id: int, bounds: tuple[float, float, float, float]) -> gpd.GeoDataFrame:
-    """Fetch features by spatial tiles to avoid 504s on the full study-area extent."""
-    endpoint = f"{service}/{layer_id}/query"
-    xmin, ymin, xmax, ymax = bounds
-    tile_size = 25000  # 25 km tiles keep spatial ID queries tractable for the SPW service.
-    object_ids = set()
-    tiles_total = max(1, int(np.ceil((xmax - xmin) / tile_size))) * max(1, int(np.ceil((ymax - ymin) / tile_size)))
-    tile_number = 0
-
-    for x0 in np.arange(xmin, xmax, tile_size):
-        for y0 in np.arange(ymin, ymax, tile_size):
-            tile_number += 1
-            x1, y1 = min(x0 + tile_size, xmax), min(y0 + tile_size, ymax)
-            tile_ids = query_tile_ids(endpoint, float(x0), float(y0), float(x1), float(y1))
-            object_ids.update(tile_ids)
-            if tile_number % 10 == 0 or tile_number == tiles_total:
-                print(f"{endpoint}: spatial search {tile_number}/{tiles_total} tiles; "
-                      f"{len(object_ids):,} unique IDs", flush=True)
-
-    ids = sorted(object_ids)
-    print(f"{endpoint}: {len(ids):,} unique intersecting noise polygons", flush=True)
-    def fetch_feature_batch(batch: list[int], *, depth: int = 0) -> list[dict]:
-        """Fetch a batch, recursively splitting it when ArcGIS cannot serve it."""
-        params = {
-            "objectIds": ",".join(map(str, batch)),
-            "outFields": "OBJECTID,SOURCE_CODE,SOURCE_DESCFR,CATEGORY_CODE,CATEGORY_DESCFR",
-            "returnGeometry": "true",
-            "outSR": 31370,
-            "f": "geojson",
-        }
-        context = f"{endpoint} feature batch ({len(batch)} IDs, depth {depth})"
-        try:
-            payload = arcgis_json(endpoint, params, timeout=180, context=context, attempts=2)
-            returned = payload.get("features", [])
-            if len(returned) != len(batch):
-                returned_ids = {int(x.get("properties", {}).get("OBJECTID")) for x in returned
-                                 if x.get("properties", {}).get("OBJECTID") is not None}
-                missing = set(batch) - returned_ids
-                if missing:
-                    raise RuntimeError(f"{context}: ArcGIS returned {len(returned)}/{len(batch)} features; "
-                                       f"{len(missing)} OBJECTIDs missing")
-            return returned
-        except RuntimeError as exc:
-            if len(batch) <= 1:
-                raise RuntimeError(f"Unable to retrieve individual noise feature {batch}: {exc}") from exc
-            midpoint = len(batch) // 2
-            print(f"{context}: request failed; splitting into {midpoint} + {len(batch)-midpoint} IDs ({exc})",
-                  flush=True)
-            return (fetch_feature_batch(batch[:midpoint], depth=depth + 1)
-                    + fetch_feature_batch(batch[midpoint:], depth=depth + 1))
-
-    features = []
-    batch_size = 100
-    for start in range(0, len(ids), batch_size):
-        batch = ids[start:start + batch_size]
-        features.extend(fetch_feature_batch(batch))
-        if (start // batch_size + 1) % 10 == 0 or start + batch_size >= len(ids):
-            print(f"{endpoint}: downloaded {len(features):,}/{len(ids):,} features "
-                  f"(batch {start // batch_size + 1}/{int(np.ceil(len(ids) / batch_size))})", flush=True)
-
-    if not features:
-        return gpd.GeoDataFrame(columns=["CATEGORY_CODE", "CATEGORY_DESCFR", "geometry"], geometry="geometry", crs="EPSG:31370")
-    frame = gpd.GeoDataFrame.from_features(features, crs="EPSG:31370")
+def read_local_noise_layer(source_key: str, index: str, sectors: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Read the official local GeoPackage, clipped to the study-area extent."""
+    path = NOISE_FILES[source_key]
+    if not path.exists():
+        raise FileNotFoundError(f"Official {source_key} noise GeoPackage not found: {path}")
+    layers = pyogrio.list_layers(path)
+    candidates = [str(row[0]) for row in layers if row[1] and "polygon" in str(row[1]).lower()]
+    matches = [name for name in candidates if index.lower() in name.lower()]
+    if len(matches) != 1:
+        raise RuntimeError(f"Cannot uniquely identify {index} polygon layer in {path.name}; "
+                           f"available layers: {[(str(x[0]), str(x[1])) for x in layers]}")
+    layer = matches[0]
+    study_bounds = sectors.to_crs("EPSG:3812").total_bounds
+    print(f"Reading {source_key} {index} from {path.name}, layer={layer}", flush=True)
+    frame = gpd.read_file(path, layer=layer, engine="pyogrio",
+                          columns=["CATEGORY_CODE", "CATEGORY_DESCFR"],
+                          bbox=tuple(float(x) for x in study_bounds))
+    if frame.empty:
+        raise RuntimeError(f"No {source_key} {index} polygons intersect the study area.")
     if frame.crs is None:
-        frame = frame.set_crs("EPSG:31370")
-    return frame.to_crs("EPSG:31370")
+        frame = frame.set_crs("EPSG:3812")
+    frame = frame.to_crs("EPSG:31370")
+    frame = frame[frame.geometry.notna() & ~frame.geometry.is_empty].copy()
+    print(f"Loaded {len(frame):,} {source_key} {index} polygons.", flush=True)
+    return frame
+
 
 def class_lower_bound(code: str) -> int:
     match = re.search(r"(?:Lden|Lnight)(\d{2})", str(code), re.I)
     if match:
         return int(match.group(1))
-    match = re.search(r"GreaterThan(\\d+)", str(code), re.I)
+    match = re.search(r"GreaterThan(\d+)", str(code), re.I)
     if match:
         return int(match.group(1))
     raise RuntimeError(f"Unrecognised official noise category code: {code!r}")
@@ -289,7 +196,7 @@ def main():
     for source_key, config in SOURCES.items():
         prefix = f"{source_key}_noise"
         for index, layer_id in config["layers"].items():
-            noise = query_layer(config["service"], layer_id, tuple(bounds))
+            noise = read_local_noise_layer(source_key, index, sectors)
             stats, categories = metrics_for_index(sectors, noise, prefix, index)
             output = gpd.GeoDataFrame(pd.concat([output, stats], axis=1), geometry="geometry", crs=sectors.crs)
             category_metadata[f"{prefix}_{index}"] = categories
