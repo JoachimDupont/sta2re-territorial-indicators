@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 
 import geopandas as gpd
@@ -61,10 +62,12 @@ def read_local_noise_layer(source_key: str, index: str, sectors: gpd.GeoDataFram
                            f"available layers: {[(str(x[0]), str(x[1])) for x in layers]}")
     layer = matches[0]
     study_bounds = sectors.to_crs("EPSG:3812").total_bounds
-    print(f"Reading {source_key} {index} from {path.name}, layer={layer}", flush=True)
+    print(f"[noise] START read {source_key}/{index}: {path.name} layer={layer}", flush=True)
+    read_started = time.perf_counter()
     frame = gpd.read_file(path, layer=layer, engine="pyogrio",
                           columns=["CATEGORY_CODE", "CATEGORY_DESCFR"],
                           bbox=tuple(float(x) for x in study_bounds))
+    print(f"[noise] END read {source_key}/{index}: {len(frame):,} features in {time.perf_counter() - read_started:.1f}s", flush=True)
     if frame.empty:
         raise RuntimeError(f"No {source_key} {index} polygons intersect the study area.")
     if frame.crs is None:
@@ -90,6 +93,7 @@ def metrics_for_index(sectors: gpd.GeoDataFrame, noise: gpd.GeoDataFrame, prefix
     required = {"CATEGORY_CODE", "geometry"}
     if not required.issubset(noise.columns):
         raise RuntimeError(f"Noise layer missing fields {required - set(noise.columns)}")
+    stage_started = time.perf_counter()
     categories = []
     for code, group in noise.groupby(noise["CATEGORY_CODE"].astype(str), sort=False):
         lower = class_lower_bound(code)
@@ -97,9 +101,15 @@ def metrics_for_index(sectors: gpd.GeoDataFrame, noise: gpd.GeoDataFrame, prefix
         categories.append({"code": code, "lower": lower, "label": label_values[0] if label_values else code,
                            "geometry": unary_union(list(group.geometry))})
     categories.sort(key=lambda x: (x["lower"], x["code"]))
+    print(f"[noise] {prefix}/{index}: built {len(categories)} category unions in {time.perf_counter() - stage_started:.1f}s", flush=True)
+    union_started = time.perf_counter()
     all_union = unary_union([item["geometry"] for item in categories])
+    threshold = 55 if index == "lden" else 50
+    threshold_union = unary_union([x["geometry"] for x in categories if x["lower"] >= threshold])
+    print(f"[noise] {prefix}/{index}: combined unions in {time.perf_counter() - union_started:.1f}s", flush=True)
     rows = []
-    for _, sector in sectors.iterrows():
+    sector_started = time.perf_counter()
+    for sector_number, (_, sector) in enumerate(sectors.iterrows(), start=1):
         geom = sector.geometry
         row = {}
         inter_total = geom.intersection(all_union)
@@ -117,15 +127,15 @@ def metrics_for_index(sectors: gpd.GeoDataFrame, noise: gpd.GeoDataFrame, prefix
             row[f"{prefix}_{index}_population_class_{i}_est"] = pop * area / denom if denom else 0.0
             row[f"{prefix}_{index}_class_{i}_label"] = item["label"]
             row[f"{prefix}_{index}_class_{i}_lower_db"] = item["lower"]
-        # Common threshold indicators: 55 dB Lden and 50 dB Lnight.
-        threshold = 55 if index == "lden" else 50
-        threshold_union = unary_union([x["geometry"] for x in categories if x["lower"] >= threshold])
+        # Common threshold union is built once above, not once per sector.
         threshold_inter = geom.intersection(threshold_union) if not threshold_union.is_empty else None
         threshold_area = float(threshold_inter.area) if threshold_inter is not None and not threshold_inter.is_empty else 0.0
         row[f"{prefix}_{index}_area_ge_{threshold}_m2"] = threshold_area
         row[f"{prefix}_{index}_population_ge_{threshold}_est"] = pop * threshold_area / denom if denom else 0.0
         row[f"{prefix}_{index}_population_ge_{threshold}_pct"] = row[f"{prefix}_{index}_population_ge_{threshold}_est"] / pop * 100 if pop else np.nan
         rows.append(row)
+        if sector_number % 100 == 0 or sector_number == len(sectors):
+            print(f"[noise] {prefix}/{index}: processed {sector_number:,}/{len(sectors):,} sectors in {time.perf_counter() - sector_started:.1f}s", flush=True)
     return pd.DataFrame(rows, index=sectors.index), categories
 
 def aggregate_units(frame: gpd.GeoDataFrame, group_cols: list[str], unit_type: str):
@@ -197,6 +207,7 @@ def main():
         "population_method_caveat": "Estimations surfaciques, pas une géolocalisation individuelle des habitants.",
         "noise_sources": {},
     }
+    print(f"[noise] Starting four-layer exposure calculation for {len(sectors):,} statistical sectors.", flush=True)
     for source_key, config in SOURCES.items():
         prefix = f"{source_key}_noise"
         for index, layer_id in config["layers"].items():
