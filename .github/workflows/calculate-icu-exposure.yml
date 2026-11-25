@@ -57,6 +57,22 @@ jobs:
       - name: Calculate forest-fire and flood exposure indicators
         if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'hazards' || inputs.indicator == 'all')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
         run: python scripts/calculate_hazard_exposure.py
+      - name: Restore official noise GeoPackages cache
+        if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'noise' || inputs.indicator == 'all')) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]')))
+        id: noise-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/raw/noise/*.gpkg
+          key: sta2re-noise-gpkg-v1-${{ runner.os }}
+      - name: Download official road and rail noise GeoPackages
+        if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'noise' || inputs.indicator == 'all')) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]')))
+        run: python scripts/download_noise_sources.py
+      - name: Save official noise GeoPackages cache
+        if: always() && steps.noise-cache.outputs.cache-hit != 'true' && hashFiles('data/raw/noise/*.gpkg') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: data/raw/noise/*.gpkg
+          key: sta2re-noise-gpkg-v1-${{ runner.os }}
       - name: Calculate strategic road and rail noise exposure
         if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'noise' || inputs.indicator == 'all')) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]')))
         run: python scripts/calculate_noise_exposure.py
