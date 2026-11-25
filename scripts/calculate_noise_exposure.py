@@ -55,7 +55,7 @@ def arcgis_json(endpoint: str, params: dict, *, timeout: int, context: str, atte
             return payload
         except (requests.RequestException, ValueError, RuntimeError) as exc:
             last_error = exc
-            if attempt == 5:
+            if attempt == attempts:
                 break
             delay = min(8 * attempt, 40)
             print(f"{context}: attempt {attempt}/{attempts} failed ({exc}); retry in {delay}s", flush=True)
@@ -118,10 +118,8 @@ def query_layer(service: str, layer_id: int, bounds: tuple[float, float, float, 
 
     ids = sorted(object_ids)
     print(f"{endpoint}: {len(ids):,} unique intersecting noise polygons", flush=True)
-    features = []
-    batch_size = 250
-    for start in range(0, len(ids), batch_size):
-        batch = ids[start:start + batch_size]
+    def fetch_feature_batch(batch: list[int], *, depth: int = 0) -> list[dict]:
+        """Fetch a batch, recursively splitting it when ArcGIS cannot serve it."""
         params = {
             "objectIds": ",".join(map(str, batch)),
             "outFields": "OBJECTID,SOURCE_CODE,SOURCE_DESCFR,CATEGORY_CODE,CATEGORY_DESCFR",
@@ -129,11 +127,35 @@ def query_layer(service: str, layer_id: int, bounds: tuple[float, float, float, 
             "outSR": 31370,
             "f": "geojson",
         }
-        payload = arcgis_json(endpoint, params, timeout=180,
-                              context=f"{endpoint} feature batch {start // batch_size + 1}")
-        features.extend(payload.get("features", []))
+        context = f"{endpoint} feature batch ({len(batch)} IDs, depth {depth})"
+        try:
+            payload = arcgis_json(endpoint, params, timeout=180, context=context, attempts=2)
+            returned = payload.get("features", [])
+            if len(returned) != len(batch):
+                returned_ids = {int(x.get("properties", {}).get("OBJECTID")) for x in returned
+                                 if x.get("properties", {}).get("OBJECTID") is not None}
+                missing = set(batch) - returned_ids
+                if missing:
+                    raise RuntimeError(f"{context}: ArcGIS returned {len(returned)}/{len(batch)} features; "
+                                       f"{len(missing)} OBJECTIDs missing")
+            return returned
+        except RuntimeError as exc:
+            if len(batch) <= 1:
+                raise RuntimeError(f"Unable to retrieve individual noise feature {batch}: {exc}") from exc
+            midpoint = len(batch) // 2
+            print(f"{context}: request failed; splitting into {midpoint} + {len(batch)-midpoint} IDs ({exc})",
+                  flush=True)
+            return (fetch_feature_batch(batch[:midpoint], depth=depth + 1)
+                    + fetch_feature_batch(batch[midpoint:], depth=depth + 1))
+
+    features = []
+    batch_size = 100
+    for start in range(0, len(ids), batch_size):
+        batch = ids[start:start + batch_size]
+        features.extend(fetch_feature_batch(batch))
         if (start // batch_size + 1) % 10 == 0 or start + batch_size >= len(ids):
-            print(f"{endpoint}: downloaded {len(features):,}/{len(ids):,} features", flush=True)
+            print(f"{endpoint}: downloaded {len(features):,}/{len(ids):,} features "
+                  f"(batch {start // batch_size + 1}/{int(np.ceil(len(ids) / batch_size))})", flush=True)
 
     if not features:
         return gpd.GeoDataFrame(columns=["CATEGORY_CODE", "CATEGORY_DESCFR", "geometry"], geometry="geometry", crs="EPSG:31370")
