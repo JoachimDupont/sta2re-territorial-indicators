@@ -61,7 +61,7 @@ jobs:
         if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'noise' || inputs.indicator == 'all')) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]')))
         run: python scripts/calculate_noise_exposure.py
       - name: Publish generated GeoJSON files without replacing other indicators
-        if: (github.event_name == 'workflow_dispatch') || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]')))
+        if: (github.event_name == 'workflow_dispatch') || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]') || contains(github.event.head_commit.message, '[run-hazards]')))
         run: |
           mkdir -p site/data
           for file in \
@@ -83,7 +83,7 @@ jobs:
             git push
           fi
       - name: Upload generated GeoJSON and QA reports
-        if: (github.event_name == 'workflow_dispatch') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
+        if: (github.event_name == 'workflow_dispatch') || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]') || contains(github.event.head_commit.message, '[run-hazards]')))
         uses: actions/upload-artifact@v4
         with:
           name: sta2re-territorial-indicators-2026
