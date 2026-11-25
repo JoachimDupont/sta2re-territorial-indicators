@@ -22,7 +22,7 @@ on:
       - ".github/workflows/calculate-icu-exposure.yml"
 
 concurrency:
-  group: sta2re-territorial-indicators-download-v2
+  group: sta2re-territorial-indicators-noise-spatial-v3
   cancel-in-progress: true
 
 permissions:
@@ -31,6 +31,7 @@ permissions:
 jobs:
   calculate:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
