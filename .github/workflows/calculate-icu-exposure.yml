@@ -1,7 +1,18 @@
-name: Calculate STA2RE ICU exposure indicators
+name: Calculate STA2RE territorial exposure indicators
 
 on:
   workflow_dispatch:
+    inputs:
+      indicator:
+        description: "Indicateur à recalculer (les autres résultats sont conservés)"
+        required: true
+        type: choice
+        default: noise
+        options:
+          - noise
+          - hazards
+          - icu
+          - all
   push:
     paths:
       - "scripts/calculate_icu_exposure.py"
@@ -31,72 +42,49 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Build fixed 29-commune study area
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run-indicators]')
         run: python scripts/identify_border_communes.py
-      - name: Download and inspect official source data
+      - name: Download and inspect official ICU source data
+        if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'icu' || inputs.indicator == 'all')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
         run: python scripts/inspect_icu_sources.py
       - name: Calculate ICU exposure indicators
-        if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[new-indicators]')
+        if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'icu' || inputs.indicator == 'all')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
         run: python scripts/calculate_icu_exposure.py
       - name: Calculate forest-fire and flood exposure indicators
+        if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'hazards' || inputs.indicator == 'all')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
         run: python scripts/calculate_hazard_exposure.py
       - name: Calculate strategic road and rail noise exposure
+        if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'noise' || inputs.indicator == 'all')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
         run: python scripts/calculate_noise_exposure.py
-      - name: Publish GeoJSON to the website
+      - name: Publish generated GeoJSON files without replacing other indicators
+        if: (github.event_name == 'workflow_dispatch') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
         run: |
           mkdir -p site/data
-          cp data/processed/icu_exposure_sectors_2026.geojson site/data/
-          cp data/processed/icu_exposure_quartiers_2026.geojson site/data/
-          cp data/processed/icu_exposure_communes_2026.geojson site/data/
-          cp data/interim/icu_exposure_qa_2026.json site/data/
-          cp data/processed/fire_exposure_sectors_2026.geojson site/data/
-          cp data/processed/fire_exposure_quartiers_2026.geojson site/data/
-          cp data/processed/fire_exposure_communes_2026.geojson site/data/
-          cp data/processed/flood_exposure_sectors_2026.geojson site/data/
-          cp data/processed/flood_exposure_quartiers_2026.geojson site/data/
-          cp data/processed/flood_exposure_communes_2026.geojson site/data/
-          cp data/interim/hazard_exposure_qa_2026.json site/data/
-          cp data/processed/noise_exposure_sectors_2026.geojson site/data/
-          cp data/processed/noise_exposure_quartiers_2026.geojson site/data/
-          cp data/processed/noise_exposure_communes_2026.geojson site/data/
-          cp data/interim/noise_exposure_qa_2026.json site/data/
+          for file in \
+            icu_exposure_sectors_2026.geojson icu_exposure_quartiers_2026.geojson icu_exposure_communes_2026.geojson \
+            fire_exposure_sectors_2026.geojson fire_exposure_quartiers_2026.geojson fire_exposure_communes_2026.geojson \
+            flood_exposure_sectors_2026.geojson flood_exposure_quartiers_2026.geojson flood_exposure_communes_2026.geojson \
+            noise_exposure_sectors_2026.geojson noise_exposure_quartiers_2026.geojson noise_exposure_communes_2026.geojson; do
+            if [ -f "data/processed/$file" ]; then cp "data/processed/$file" site/data/; fi
+          done
+          for file in icu_exposure_qa_2026.json hazard_exposure_qa_2026.json noise_exposure_qa_2026.json; do
+            if [ -f "data/interim/$file" ]; then cp "data/interim/$file" site/data/; fi
+          done
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add site/data/
           if ! git diff --cached --quiet; then
-            git commit -m "Publish ICU indicator data [skip ci]"
+            git commit -m "Publish selected territorial indicators [skip ci]"
             git pull --rebase origin main
             git push
           fi
-      - name: Upload GeoJSON, CSV and QA report
+      - name: Upload generated GeoJSON and QA reports
+        if: (github.event_name == 'workflow_dispatch') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
         uses: actions/upload-artifact@v4
         with:
-          name: sta2re-territorial-hazard-exposure-2026
+          name: sta2re-territorial-indicators-2026
           path: |
-            data/processed/icu_exposure_sectors_2026.geojson
-            data/processed/icu_exposure_sectors_2026.csv
-            data/processed/icu_exposure_quartiers_2026.geojson
-            data/processed/icu_exposure_quartiers_2026.csv
-            data/processed/icu_exposure_communes_2026.geojson
-            data/processed/icu_exposure_communes_2026.csv
-            data/interim/icu_exposure_qa_2026.json
-            data/processed/fire_exposure_sectors_2026.geojson
-            data/processed/fire_exposure_sectors_2026.csv
-            data/processed/fire_exposure_quartiers_2026.geojson
-            data/processed/fire_exposure_quartiers_2026.csv
-            data/processed/fire_exposure_communes_2026.geojson
-            data/processed/fire_exposure_communes_2026.csv
-            data/processed/flood_exposure_sectors_2026.geojson
-            data/processed/flood_exposure_sectors_2026.csv
-            data/processed/flood_exposure_quartiers_2026.geojson
-            data/processed/flood_exposure_quartiers_2026.csv
-            data/processed/flood_exposure_communes_2026.geojson
-            data/processed/flood_exposure_communes_2026.csv
-            data/interim/hazard_exposure_qa_2026.json
-            data/processed/noise_exposure_sectors_2026.geojson
-            data/processed/noise_exposure_sectors_2026.csv
-            data/processed/noise_exposure_quartiers_2026.geojson
-            data/processed/noise_exposure_quartiers_2026.csv
-            data/processed/noise_exposure_communes_2026.geojson
-            data/processed/noise_exposure_communes_2026.csv
-            data/interim/noise_exposure_qa_2026.json
-          if-no-files-found: error
+            data/processed/*exposure*.geojson
+            data/processed/*exposure*.csv
+            data/interim/*exposure*qa*.json
+          if-no-files-found: ignore
