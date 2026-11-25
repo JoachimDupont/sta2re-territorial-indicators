@@ -18,6 +18,7 @@ on:
       - "scripts/calculate_icu_exposure.py"
       - "scripts/calculate_hazard_exposure.py"
       - "scripts/calculate_noise_exposure.py"
+      - "scripts/prepare_statbel_inputs.py"
       - ".github/workflows/calculate-icu-exposure.yml"
 
 concurrency:
@@ -42,11 +43,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Build fixed 29-commune study area
-        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run-indicators]')
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]') || contains(github.event.head_commit.message, '[run-hazards]')
         run: python scripts/identify_border_communes.py
       - name: Download and inspect official ICU source data
         if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'icu' || inputs.indicator == 'all')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
         run: python scripts/inspect_icu_sources.py
+      - name: Prepare Statbel geometry and population inputs
+        if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'noise' || inputs.indicator == 'hazards')) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-noise]') || contains(github.event.head_commit.message, '[run-hazards]')))
+        run: python scripts/prepare_statbel_inputs.py
       - name: Calculate ICU exposure indicators
         if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'icu' || inputs.indicator == 'all')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
         run: python scripts/calculate_icu_exposure.py
@@ -54,10 +58,10 @@ jobs:
         if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'hazards' || inputs.indicator == 'all')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
         run: python scripts/calculate_hazard_exposure.py
       - name: Calculate strategic road and rail noise exposure
-        if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'noise' || inputs.indicator == 'all')) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
+        if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'noise' || inputs.indicator == 'all')) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]')))
         run: python scripts/calculate_noise_exposure.py
       - name: Publish generated GeoJSON files without replacing other indicators
-        if: (github.event_name == 'workflow_dispatch') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[run-indicators]'))
+        if: (github.event_name == 'workflow_dispatch') || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]')))
         run: |
           mkdir -p site/data
           for file in \
