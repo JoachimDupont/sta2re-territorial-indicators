@@ -50,7 +50,11 @@ def read_local_noise_layer(source_key: str, index: str, sectors: gpd.GeoDataFram
     if not path.exists():
         raise FileNotFoundError(f"Official {source_key} noise GeoPackage not found: {path}")
     layers = pyogrio.list_layers(path)
-    candidates = [str(row[0]) for row in layers if row[1] and "polygon" in str(row[1]).lower()]
+    # Some official GeoPackages advertise their geometry type as "Unknown"
+    # even though the LDEN/LNIGHT feature tables contain polygon geometries.
+    # Identify the thematic layer by its stable name, then validate geometry
+    # after reading instead of filtering on the GeoPackage geometry metadata.
+    candidates = [str(row[0]) for row in layers]
     matches = [name for name in candidates if index.lower() in name.lower()]
     if len(matches) != 1:
         raise RuntimeError(f"Cannot uniquely identify {index} polygon layer in {path.name}; "
