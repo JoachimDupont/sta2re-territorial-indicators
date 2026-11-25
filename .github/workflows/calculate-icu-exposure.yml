@@ -22,7 +22,7 @@ on:
       - ".github/workflows/calculate-icu-exposure.yml"
 
 concurrency:
-  group: sta2re-territorial-indicators-calculation
+  group: sta2re-territorial-indicators-download-v2
   cancel-in-progress: true
 
 permissions:
@@ -74,7 +74,7 @@ jobs:
           path: data/raw/noise/*.gpkg
           key: sta2re-noise-gpkg-v1-${{ runner.os }}
       - name: Calculate strategic road and rail noise exposure
-        if: (github.event_name == 'workflow_dispatch' && (inputs.indicator == 'noise' || inputs.indicator == 'all')) || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]')))
+        if: false # Temporarily disabled while inspecting the official local GeoPackages.
         run: python scripts/calculate_noise_exposure.py
       - name: Publish generated GeoJSON files without replacing other indicators
         if: (github.event_name == 'workflow_dispatch') || (github.event_name == 'push' && (contains(github.event.head_commit.message, '[run-indicators]') || contains(github.event.head_commit.message, '[run-noise]') || contains(github.event.head_commit.message, '[run-hazards]')))
