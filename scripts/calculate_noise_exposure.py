@@ -88,54 +88,177 @@ def class_lower_bound(code: str) -> int:
     raise RuntimeError(f"Unrecognised official noise category code: {code!r}")
 
 def metrics_for_index(sectors: gpd.GeoDataFrame, noise: gpd.GeoDataFrame, prefix: str, index: str):
+    """Calculate noise exposure with a spatial index, dissolving only local candidates.
+
+    The former implementation dissolved every source polygon into large
+    wall-to-wall geometries before processing sectors. Here, each sector first
+    queries the source spatial index and unions only the features that actually
+    intersect that sector. This avoids four expensive global dissolves and
+    prevents every sector from intersecting geometries covering the full study.
+    """
     if noise.empty:
         raise RuntimeError(f"No official noise polygons returned for {prefix} {index}.")
     required = {"CATEGORY_CODE", "geometry"}
     if not required.issubset(noise.columns):
         raise RuntimeError(f"Noise layer missing fields {required - set(noise.columns)}")
-    stage_started = time.perf_counter()
+
+    noise = noise.loc[
+        noise.geometry.notna() & ~noise.geometry.is_empty
+    ].copy().reset_index(drop=True)
+    noise["_category_code"] = noise["CATEGORY_CODE"].astype(str)
+    if noise.empty:
+        raise RuntimeError(f"No usable geometries for {prefix} {index}.")
+
+    # Keep metadata independent from geometry operations. The order is stable
+    # and therefore the exported class_N fields remain reproducible.
     categories = []
-    for code, group in noise.groupby(noise["CATEGORY_CODE"].astype(str), sort=False):
+    for code, group in noise.groupby("_category_code", sort=False):
         lower = class_lower_bound(code)
-        label_values = group["CATEGORY_DESCFR"].dropna().astype(str).unique().tolist() if "CATEGORY_DESCFR" in group else []
-        categories.append({"code": code, "lower": lower, "label": label_values[0] if label_values else code,
-                           "geometry": unary_union(list(group.geometry))})
-    categories.sort(key=lambda x: (x["lower"], x["code"]))
-    print(f"[noise] {prefix}/{index}: built {len(categories)} category unions in {time.perf_counter() - stage_started:.1f}s", flush=True)
-    union_started = time.perf_counter()
-    all_union = unary_union([item["geometry"] for item in categories])
+        labels = (
+            group["CATEGORY_DESCFR"].dropna().astype(str).unique().tolist()
+            if "CATEGORY_DESCFR" in group else []
+        )
+        categories.append({
+            "code": code,
+            "lower": lower,
+            "label": labels[0] if labels else code,
+        })
+    categories.sort(key=lambda item: (item["lower"], item["code"]))
+    if not categories:
+        raise RuntimeError(f"No noise classes found for {prefix} {index}.")
+
+    category_codes = noise["_category_code"].to_numpy()
+    category_code_set = {item["code"] for item in categories}
+    if set(category_codes) != category_code_set:
+        raise RuntimeError(f"Inconsistent category codes in {prefix} {index}.")
+
+    print(
+        f"[noise] {prefix}/{index}: building spatial index for "
+        f"{len(noise):,} features / {len(categories)} classes",
+        flush=True,
+    )
+    index_started = time.perf_counter()
+    spatial_index = noise.sindex
+    print(
+        f"[noise] {prefix}/{index}: spatial index ready in "
+        f"{time.perf_counter() - index_started:.1f}s",
+        flush=True,
+    )
+
     threshold = 55 if index == "lden" else 50
-    threshold_union = unary_union([x["geometry"] for x in categories if x["lower"] >= threshold])
-    print(f"[noise] {prefix}/{index}: combined unions in {time.perf_counter() - union_started:.1f}s", flush=True)
+    threshold_codes = {
+        item["code"] for item in categories if item["lower"] >= threshold
+    }
+    geometries = noise.geometry
     rows = []
     sector_started = time.perf_counter()
+    candidate_total = 0
+    candidate_max = 0
+
     for sector_number, (_, sector) in enumerate(sectors.iterrows(), start=1):
         geom = sector.geometry
-        row = {}
-        inter_total = geom.intersection(all_union)
-        total_area = float(inter_total.area) if not inter_total.is_empty else 0.0
         pop = float(sector["population_total"])
         denom = float(geom.area)
+        row = {}
+
+        # predicate="intersects" filters bounding-box hits to true intersections.
+        positions = np.asarray(
+            spatial_index.query(geom, predicate="intersects"), dtype=int
+        )
+        candidate_total += len(positions)
+        candidate_max = max(candidate_max, len(positions))
+
+        if len(positions):
+            local_geometries = geometries.iloc[positions]
+            local_codes = category_codes[positions]
+
+            # Union all local classes once for the total footprint. Then reuse
+            # the same local candidate list for class and threshold metrics.
+            total_union = unary_union(list(local_geometries))
+            total_intersection = geom.intersection(total_union)
+            total_area = (
+                float(total_intersection.area)
+                if not total_intersection.is_empty else 0.0
+            )
+        else:
+            local_geometries = None
+            local_codes = np.asarray([], dtype=str)
+            total_area = 0.0
+
         row[f"{prefix}_{index}_area_total_m2"] = total_area
-        row[f"{prefix}_{index}_population_est"] = pop * total_area / denom if denom else 0.0
-        row[f"{prefix}_{index}_population_pct"] = row[f"{prefix}_{index}_population_est"] / pop * 100 if pop else np.nan
-        row[f"{prefix}_{index}_area_pct"] = total_area / denom * 100 if denom else np.nan
-        for i, item in enumerate(categories, start=1):
-            inter = geom.intersection(item["geometry"])
-            area = float(inter.area) if not inter.is_empty else 0.0
-            row[f"{prefix}_{index}_area_class_{i}_m2"] = area
-            row[f"{prefix}_{index}_population_class_{i}_est"] = pop * area / denom if denom else 0.0
-            row[f"{prefix}_{index}_class_{i}_label"] = item["label"]
-            row[f"{prefix}_{index}_class_{i}_lower_db"] = item["lower"]
-        # Common threshold union is built once above, not once per sector.
-        threshold_inter = geom.intersection(threshold_union) if not threshold_union.is_empty else None
-        threshold_area = float(threshold_inter.area) if threshold_inter is not None and not threshold_inter.is_empty else 0.0
+        row[f"{prefix}_{index}_population_est"] = (
+            pop * total_area / denom if denom else 0.0
+        )
+        row[f"{prefix}_{index}_population_pct"] = (
+            row[f"{prefix}_{index}_population_est"] / pop * 100
+            if pop else np.nan
+        )
+        row[f"{prefix}_{index}_area_pct"] = (
+            total_area / denom * 100 if denom else np.nan
+        )
+
+        threshold_geometries = []
+        for class_number, item in enumerate(categories, start=1):
+            if len(positions):
+                class_positions = np.flatnonzero(local_codes == item["code"])
+            else:
+                class_positions = np.asarray([], dtype=int)
+
+            if len(class_positions):
+                class_geometries = local_geometries.iloc[class_positions]
+                class_union = unary_union(list(class_geometries))
+                class_intersection = geom.intersection(class_union)
+                class_area = (
+                    float(class_intersection.area)
+                    if not class_intersection.is_empty else 0.0
+                )
+                if item["code"] in threshold_codes:
+                    threshold_geometries.extend(list(class_geometries))
+            else:
+                class_area = 0.0
+
+            row[f"{prefix}_{index}_area_class_{class_number}_m2"] = class_area
+            row[f"{prefix}_{index}_population_class_{class_number}_est"] = (
+                pop * class_area / denom if denom else 0.0
+            )
+            row[f"{prefix}_{index}_class_{class_number}_label"] = item["label"]
+            row[f"{prefix}_{index}_class_{class_number}_lower_db"] = item["lower"]
+
+        if threshold_geometries:
+            threshold_union = unary_union(threshold_geometries)
+            threshold_intersection = geom.intersection(threshold_union)
+            threshold_area = (
+                float(threshold_intersection.area)
+                if not threshold_intersection.is_empty else 0.0
+            )
+        else:
+            threshold_area = 0.0
+
         row[f"{prefix}_{index}_area_ge_{threshold}_m2"] = threshold_area
-        row[f"{prefix}_{index}_population_ge_{threshold}_est"] = pop * threshold_area / denom if denom else 0.0
-        row[f"{prefix}_{index}_population_ge_{threshold}_pct"] = row[f"{prefix}_{index}_population_ge_{threshold}_est"] / pop * 100 if pop else np.nan
+        row[f"{prefix}_{index}_population_ge_{threshold}_est"] = (
+            pop * threshold_area / denom if denom else 0.0
+        )
+        row[f"{prefix}_{index}_population_ge_{threshold}_pct"] = (
+            row[f"{prefix}_{index}_population_ge_{threshold}_est"] / pop * 100
+            if pop else np.nan
+        )
         rows.append(row)
-        if sector_number % 100 == 0 or sector_number == len(sectors):
-            print(f"[noise] {prefix}/{index}: processed {sector_number:,}/{len(sectors):,} sectors in {time.perf_counter() - sector_started:.1f}s", flush=True)
+
+        if sector_number % 50 == 0 or sector_number == len(sectors):
+            elapsed = time.perf_counter() - sector_started
+            print(
+                f"[noise] {prefix}/{index}: sectors "
+                f"{sector_number:,}/{len(sectors):,}; "
+                f"candidates={candidate_total:,}; max/sector={candidate_max:,}; "
+                f"elapsed={elapsed:.1f}s",
+                flush=True,
+            )
+
+    print(
+        f"[noise] {prefix}/{index}: completed in "
+        f"{time.perf_counter() - sector_started:.1f}s",
+        flush=True,
+    )
     return pd.DataFrame(rows, index=sectors.index), categories
 
 def aggregate_units(frame: gpd.GeoDataFrame, group_cols: list[str], unit_type: str):
