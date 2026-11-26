@@ -1,0 +1,43 @@
+{
+  "scope": "Tournai uniquement",
+  "municipality_refnis": "57081",
+  "study_sector_count": 169,
+  "statistical_quarter_count": 60,
+  "commune_count": 1,
+  "population_total": 69045,
+  "source": "https://geoportail.wallonie.be/catalogue/7ae4b87a-d33f-4f5e-b0b2-46f35833c06c.html",
+  "source_service": "https://geoservices.wallonie.be/arcgis/rest/services/CHGMT_CLIMAT/AWAC_ALEA_INCENDIE/MapServer",
+  "source_last_updated": "24/04/2025",
+  "source_production_year": 2024,
+  "source_feature_count": 835040,
+  "source_crs": "EPSG:31370",
+  "class_field": "FIRE_PROBA",
+  "classes": [
+    {
+      "value": "High",
+      "label": "Faible"
+    },
+    {
+      "value": "Low",
+      "label": "Moyen-faible"
+    },
+    {
+      "value": "Medium hi",
+      "label": "Moyen-élevé"
+    },
+    {
+      "value": "Medium low",
+      "label": "Elevé"
+    }
+  ],
+  "estimated_exposed_population": 13972.253469840623,
+  "exposed_area_km2": 34.956108559846435,
+  "method": "Union des polygones de probabilité par classe puis intersection avec les secteurs statistiques; population estimée au prorata de la surface exposée dans chaque secteur, sous hypothèse de répartition uniforme.",
+  "population_source": "Statbel, population par secteur statistique au 01/01/2026",
+  "caveat": "Estimation exploratoire surfacique, pas une localisation individuelle des habitants ni une prévision de départ de feu. La couche cartographie la probabilité d'incendie des zones boisées, pas l'exposition directe des bâtiments.",
+  "output_feature_counts": {
+    "sectors": 169,
+    "quartiers": 60,
+    "communes": 1
+  }
+}
