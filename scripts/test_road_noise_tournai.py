@@ -37,7 +37,7 @@ def main():
           f"population={int(sectors['population_total'].sum()):,}", flush=True)
 
     layers = [str(row[0]) for row in pyogrio.list_layers(ROAD_GPKG)]
-    expected = {"lden": "BRUIT_MRAIL_2022__LDEN", "lnight": "BRUIT_MRAIL_2022__LNIGHT"}
+    expected = {"lden": "BRUIT_MROAD_2022__LDEN", "lnight": "BRUIT_MROAD_2022__LNIGHT"}
     missing = [name for name in expected.values() if name not in layers]
     if missing:
         raise RuntimeError(f"Missing expected road layers {missing}; available={layers}")
