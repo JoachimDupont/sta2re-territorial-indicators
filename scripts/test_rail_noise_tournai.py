@@ -17,7 +17,7 @@ import pyogrio
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from calculate_hazard_exposure import load_population_sectors
-from calculate_noise_exposure import SOURCES, read_local_noise_layer, metrics_for_index
+from calculate_noise_exposure import SOURCES, read_local_noise_layer, metrics_for_index, aggregate_units, aggregate_communes
 
 OUT = ROOT / "data" / "experimental"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -72,7 +72,23 @@ def main():
     output["unit_id"] = output["cd_sector"].astype(str)
     output["municipality_code"] = code
     output["municipality_name"] = "Tournai"
-    output.to_crs("EPSG:4326").to_file(OUT / "rail_noise_tournai_sectors_2026.geojson", driver="GeoJSON")
+    quarters = aggregate_units(output, ["cd_munty_refnis", "cd_quarter"], "quartier_statistique")
+    municipalities = aggregate_communes(output, tournai, population)
+    for frame in (output, quarters, municipalities):
+        for index in ("lden", "lnight"):
+            categories = qa["indices"][index]["categories"]
+            for number, item in enumerate(categories, start=1):
+                frame[f"rail_noise_{index}_class_{number}_label"] = item["label"]
+    outputs = {
+        "sectors": output,
+        "quartiers": quarters,
+        "communes": municipalities,
+    }
+    for scale, frame in outputs.items():
+        frame.to_crs("EPSG:4326").to_file(
+            OUT / f"rail_noise_tournai_{scale}_2026.geojson", driver="GeoJSON"
+        )
+        qa.setdefault("output_feature_counts", {})[scale] = int(len(frame))
     (OUT / "rail_noise_tournai_qa_2026.json").write_text(json.dumps(qa, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(qa, ensure_ascii=False, indent=2), flush=True)
     print(f"Experimental GeoJSON: {OUT / 'rail_noise_tournai_sectors_2026.geojson'}", flush=True)
