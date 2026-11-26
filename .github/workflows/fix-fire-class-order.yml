@@ -1,0 +1,35 @@
+name: Correct published Tournai fire class ordering
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/fix_fire_class_order.py"
+      - ".github/workflows/fix-fire-class-order.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sta2re-fire-tournai-class-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Correct class ordering in published GeoJSON files
+        run: python scripts/fix_fire_class_order.py
+      - name: Publish corrected Tournai fire indicators
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/data/fire_exposure_tournai_*
+          if ! git diff --cached --quiet; then
+            git commit -m "Correct published Tournai forest-fire class ordering [skip ci]"
+            git pull --rebase origin main
+            git push
+          fi
