@@ -1,0 +1,99 @@
+{
+  "scope": "Tournai uniquement",
+  "municipality_refnis": "57081",
+  "statistical_sector_count": 169,
+  "statistical_quarter_count": 60,
+  "population_total": 69045,
+  "source": "https://geoportail.wallonie.be/catalogue/68cfc9ff-651a-4757-b792-6bde0e238c2f.html",
+  "source_raster": {
+    "raster": "wallonia_flood_hazard_2020_31370.tif",
+    "resolution_m": [
+      2.000000000000002,
+      2.0
+    ],
+    "pixel_area_m2": 4.000000000000004,
+    "observed_codes": [
+      101,
+      110,
+      120,
+      130,
+      201,
+      210,
+      220,
+      230,
+      301,
+      310,
+      320,
+      330
+    ]
+  },
+  "official_level_labels": {
+    "very_low": "Aléa très faible",
+    "low": "Aléa faible",
+    "medium": "Aléa moyen",
+    "high": "Aléa élevé"
+  },
+  "official_class_codes": {
+    "101": {
+      "type": "overflow",
+      "level": "very_low"
+    },
+    "110": {
+      "type": "overflow",
+      "level": "low"
+    },
+    "120": {
+      "type": "overflow",
+      "level": "medium"
+    },
+    "130": {
+      "type": "overflow",
+      "level": "high"
+    },
+    "201": {
+      "type": "runoff",
+      "level": "very_low"
+    },
+    "210": {
+      "type": "runoff",
+      "level": "low"
+    },
+    "220": {
+      "type": "runoff",
+      "level": "medium"
+    },
+    "230": {
+      "type": "runoff",
+      "level": "high"
+    },
+    "301": {
+      "type": "combined",
+      "level": "very_low"
+    },
+    "310": {
+      "type": "combined",
+      "level": "low"
+    },
+    "320": {
+      "type": "combined",
+      "level": "medium"
+    },
+    "330": {
+      "type": "combined",
+      "level": "high"
+    }
+  },
+  "simple_level_codes": {
+    "1": "very_low",
+    "10": "low",
+    "20": "medium",
+    "30": "high"
+  },
+  "method": "Comptage des pixels de 2 m dont le centre se situe dans chaque secteur statistique. La surface de chaque niveau d'aléa est rapportée à la surface du secteur pour estimer la population exposée, sous hypothèse de répartition uniforme de la population dans le secteur. Les codes combinant débordement et ruissellement sont comptés une seule fois dans le total.",
+  "caveat": "Estimation exploratoire de population à l'échelle statistique; ce n'est ni une prévision de crue ni une localisation individuelle des habitants. La cartographie officielle est celle en vigueur, mise à jour le 18/02/2021.",
+  "output_feature_counts": {
+    "sectors": 169,
+    "quartiers": 60,
+    "communes": 1
+  }
+}
