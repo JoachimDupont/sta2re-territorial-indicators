@@ -2,6 +2,11 @@ name: Experimental rail noise - Tournai
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "scripts/test_rail_noise_tournai.py"
+      - "scripts/download_rail_noise_source.py"
+      - ".github/workflows/test-rail-noise-tournai.yml"
 
 permissions:
   contents: read
