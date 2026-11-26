@@ -1,0 +1,78 @@
+name: Experimental flood hazard - Tournai
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/test_flood_tournai.py"
+      - "scripts/download_flood_raster_source.py"
+      - ".github/workflows/test-flood-tournai.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sta2re-flood-tournai-experiment
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Prepare Tournai study inputs
+        run: |
+          python scripts/identify_border_communes.py
+          python scripts/prepare_statbel_inputs.py
+      - name: Restore flood raster cache
+        id: flood-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/raw/flood/wallonia_flood_hazard_2020_31370.tif
+          key: sta2re-flood-raster-2020-v1-${{ runner.os }}
+      - name: Download official flood raster if cache missed
+        run: python scripts/download_flood_raster_source.py
+      - name: Save flood raster cache
+        if: steps.flood-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data/raw/flood/wallonia_flood_hazard_2020_31370.tif
+          key: ${{ steps.flood-cache.outputs.cache-primary-key }}
+      - name: Calculate experimental Tournai flood exposure
+        run: python scripts/test_flood_tournai.py
+      - name: Publish Tournai flood data without replacing existing indicators
+        run: |
+          mkdir -p site/data
+          cp data/experimental/flood_exposure_tournai_communes_2026.geojson site/data/
+          cp data/experimental/flood_exposure_tournai_quartiers_2026.geojson site/data/
+          cp data/experimental/flood_exposure_tournai_sectors_2026.geojson site/data/
+          cp data/experimental/flood_exposure_tournai_qa_2026.json site/data/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/data/flood_exposure_tournai_*
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish experimental Tournai flood indicators [skip ci]"
+            git pull --rebase origin main
+            git push
+          fi
+      - name: Upload Tournai results
+        uses: actions/upload-artifact@v4
+        with:
+          name: flood-tournai-results
+          path: |
+            data/experimental/flood_exposure_tournai_communes_2026.geojson
+            data/experimental/flood_exposure_tournai_quartiers_2026.geojson
+            data/experimental/flood_exposure_tournai_sectors_2026.geojson
+            data/experimental/flood_exposure_tournai_qa_2026.json
+          if-no-files-found: error
+          retention-days: 30
