@@ -114,3 +114,83 @@ document.querySelector('#scale').addEventListener('change',load);
 document.querySelector('#indicator').addEventListener('change',draw);
 document.querySelector('#search').addEventListener('input',draw);
 load();
+
+// Five-axis population exposure radar (commune scale).
+const radarSources=[
+  {key:'icu_population_pct',label:'Îlots de chaleur',file:'icu_exposure_communes_2026.geojson'},
+  {key:'road_noise_lden_population_pct',label:'Bruit routier (Lden)',file:'road_noise_tournai_communes_2026.geojson'},
+  {key:'rail_noise_lden_population_pct',label:'Bruit ferroviaire (Lden)',file:'rail_noise_tournai_communes_2026.geojson'},
+  {key:'flood_population_pct',label:'Inondation',file:'flood_exposure_tournai_communes_2026.geojson'},
+  {key:'fire_population_pct',label:'Incendie de forêt',file:'fire_exposure_tournai_communes_2026.geojson'}
+];
+let radarChart=null,radarRows=null;
+async function loadRadarRows(){
+  if(radarRows)return radarRows;
+  const collections=await Promise.all(radarSources.map(async source=>{
+    const response=await fetch('data/'+source.file);
+    if(!response.ok)throw Error('Impossible de charger '+source.label);
+    return response.json();
+  }));
+  const maps=collections.map(collection=>new Map((collection.features||[]).map(feature=>{
+    const p=feature.properties||{};
+    return [String(p.municipality_code||p.unit_id||''),p];
+  })));
+  const common=[...maps[0].keys()].filter(code=>maps.every(m=>m.has(code)));
+  radarRows=common.map(code=>{
+    const props=maps.map(m=>m.get(code));
+    return {code,name:props[0].municipality_name||props[0].tx_munty_descr_fr||code,values:radarSources.map((source,i)=>Number(props[i][source.key]))};
+  }).filter(row=>row.values.every(value=>Number.isFinite(value)));
+  if(!radarRows.length)throw Error('Aucune commune ne dispose actuellement des cinq indicateurs.');
+  return radarRows;
+}
+function drawRadar(row){
+  const canvas=document.getElementById('exposure-radar');
+  if(!canvas||typeof Chart==='undefined')throw Error('Le composant graphique radar ne peut pas être chargé.');
+  const labels=radarSources.map(source=>source.label);
+  if(radarChart)radarChart.destroy();
+  radarChart=new Chart(canvas,{
+    type:'radar',
+    data:{labels,datasets:[{label:'Population exposée (%)',data:row.values,fill:true,backgroundColor:'rgba(35,137,126,.18)',borderColor:'#23897e',pointBackgroundColor:'#145f5b',pointBorderColor:'#fff',pointHoverBackgroundColor:'#fff',pointHoverBorderColor:'#145f5b',borderWidth:2,pointRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:context=>Number(context.raw).toLocaleString('fr-BE',{maximumFractionDigits:1})+' %'}}},scales:{r:{min:0,max:100,ticks:{stepSize:20,backdropColor:'transparent',callback:value=>value+' %',font:{size:10}},pointLabels:{font:{size:12,weight:'600'},color:'#284654'},grid:{color:'#dce6e9'},angleLines:{color:'#dce6e9'}}}}
+  });
+  const sorted=radarSources.map((source,i)=>({label:source.label,value:row.values[i]})).sort((a,b)=>b.value-a.value);
+  document.getElementById('radar-summary').textContent='À '+row.name+', la part estimée la plus importante concerne '+sorted[0].label.toLocaleLowerCase('fr')+' ('+fmt(sorted[0].value)+' %). La plus faible concerne '+sorted[sorted.length-1].label.toLocaleLowerCase('fr')+' ('+fmt(sorted[sorted.length-1].value)+' %).';
+  document.getElementById('radar-values').innerHTML=sorted.map(item=>'<div class="radar-value"><span>'+item.label+'</span><strong>'+fmt(item.value)+' %</strong></div>').join('');
+}
+async function openRadar(){
+  document.getElementById('map-workspace').hidden=true;
+  document.getElementById('radar-panel').hidden=false;
+  document.getElementById('map-view-btn').classList.remove('active');
+  document.getElementById('map-view-btn').setAttribute('aria-pressed','false');
+  document.getElementById('radar-view-btn').classList.add('active');
+  document.getElementById('radar-view-btn').setAttribute('aria-pressed','true');
+  const select=document.getElementById('radar-commune');
+  try{
+    const rows=await loadRadarRows();
+    if(!select.dataset.ready){
+      select.innerHTML=rows.map(row=>'<option value="'+row.code+'">'+row.name+'</option>').join('');
+      select.dataset.ready='1';
+    }
+    const row=rows.find(item=>item.code===select.value)||rows[0];
+    select.value=row.code;
+    drawRadar(row);
+  }catch(error){
+    document.getElementById('radar-summary').textContent=error.message;
+  }
+}
+function closeRadar(){
+  document.getElementById('radar-panel').hidden=true;
+  document.getElementById('map-workspace').hidden=false;
+  document.getElementById('radar-view-btn').classList.remove('active');
+  document.getElementById('radar-view-btn').setAttribute('aria-pressed','false');
+  document.getElementById('map-view-btn').classList.add('active');
+  document.getElementById('map-view-btn').setAttribute('aria-pressed','true');
+  setTimeout(()=>map.invalidateSize(),50);
+}
+document.getElementById('radar-view-btn').addEventListener('click',openRadar);
+document.getElementById('map-view-btn').addEventListener('click',closeRadar);
+document.getElementById('radar-commune').addEventListener('change',async event=>{
+  const rows=await loadRadarRows();
+  const row=rows.find(item=>item.code===event.target.value);
+  if(row)drawRadar(row);
+});
