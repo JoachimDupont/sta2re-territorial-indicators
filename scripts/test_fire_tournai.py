@@ -95,6 +95,22 @@ def main() -> None:
     print(f"Tournai pilot: {len(sectors)} sectors; population={int(sectors['population_total'].sum()):,}", flush=True)
 
     fire, field, classes, metadata = load_fire_layer()
+    # FIRE_PROBA is categorical text, so alphabetical ordering is not severity ordering.
+    # Explicitly map the four source codes to the official French legend, low -> high.
+    official_labels = {
+        "Low": "Faible",
+        "Medium low": "Moyen-faible",
+        "Medium hi": "Moyen-élevé",
+        "High": "Élevé",
+    }
+    observed_codes = set(fire[field].dropna().astype(str).unique())
+    if observed_codes != set(official_labels):
+        raise RuntimeError(
+            f"Unexpected FIRE_PROBA codes: {sorted(observed_codes)}; "
+            f"expected {sorted(official_labels)}"
+        )
+    classes = [{"value": code, "label": label} for code, label in official_labels.items()]
+    print(f"Validated official fire class order (low to high): {classes}", flush=True)
     fire_stats = fire_metrics(sectors, fire, field, classes)
     sector_output = gpd.GeoDataFrame(
         pd.concat([sectors, fire_stats], axis=1), geometry="geometry", crs=sectors.crs
