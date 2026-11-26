@@ -44,11 +44,28 @@ jobs:
         run: python scripts/download_rail_noise_source.py
       - name: Calculate experimental Tournai rail exposure
         run: python scripts/test_rail_noise_tournai.py
-      - name: Upload experimental results (not published to website)
+      - name: Publish Tournai rail-noise data without replacing ICU
+        run: |
+          mkdir -p site/data
+          cp data/experimental/rail_noise_tournai_communes_2026.geojson site/data/
+          cp data/experimental/rail_noise_tournai_quartiers_2026.geojson site/data/
+          cp data/experimental/rail_noise_tournai_sectors_2026.geojson site/data/
+          cp data/experimental/rail_noise_tournai_qa_2026.json site/data/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/data/rail_noise_tournai_*
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish experimental Tournai rail-noise indicators [skip ci]"
+            git pull --rebase origin main
+            git push
+          fi
+      - name: Upload Tournai results
         uses: actions/upload-artifact@v4
         with:
-          name: rail-noise-tournai-experimental
+          name: rail-noise-tournai-results
           path: |
+            data/experimental/rail_noise_tournai_communes_2026.geojson
+            data/experimental/rail_noise_tournai_quartiers_2026.geojson
             data/experimental/rail_noise_tournai_sectors_2026.geojson
             data/experimental/rail_noise_tournai_qa_2026.json
           if-no-files-found: error
