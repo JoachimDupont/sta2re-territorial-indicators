@@ -1,0 +1,92 @@
+{
+  "scope": "Tournai uniquement",
+  "municipality_refnis": "57081",
+  "statistical_sector_count": 169,
+  "population_total": 69045,
+  "source": "https://geoportail.wallonie.be/catalogue/ce880380-2b83-467c-88b7-cfea74e4f255.html",
+  "source_geopackage": "BRUIT_MRAIL_2022_GEOPACKAGE_3812.zip",
+  "indices": {
+    "lden": {
+      "feature_count_in_tournai_extent": 845,
+      "category_field": "CATEGORY_CODE",
+      "categories": [
+        {
+          "code": "Lden5054",
+          "label": "Plage Lden de 50 à 54 dB",
+          "lower_db": 50
+        },
+        {
+          "code": "Lden5559",
+          "label": "Plage Lden de 55 à 59 dB",
+          "lower_db": 55
+        },
+        {
+          "code": "Lden6064",
+          "label": "Plage Lden de 60 à 64 dB",
+          "lower_db": 60
+        },
+        {
+          "code": "Lden6569",
+          "label": "Plage Lden de 65 à 69 dB",
+          "lower_db": 65
+        },
+        {
+          "code": "Lden7074",
+          "label": "Plage Lden de 70 à 74 dB",
+          "lower_db": 70
+        },
+        {
+          "code": "LdenGreaterThan75",
+          "label": "Valeur Lden égale ou supérieure à 75 dB",
+          "lower_db": 75
+        }
+      ],
+      "threshold_db": 55,
+      "estimated_population_exposed": 4135.816175573857,
+      "area_covered_m2": 4251930.989824921,
+      "processing_seconds": 20.6
+    },
+    "lnight": {
+      "feature_count_in_tournai_extent": 234,
+      "category_field": "CATEGORY_CODE",
+      "categories": [
+        {
+          "code": "Lnight5054",
+          "label": "Plage Lnight de 50 à 54 dB",
+          "lower_db": 50
+        },
+        {
+          "code": "Lnight5559",
+          "label": "Plage Lnight de 55 à 59 dB",
+          "lower_db": 55
+        },
+        {
+          "code": "Lnight6064",
+          "label": "Plage Lnight de 60 à 64 dB",
+          "lower_db": 60
+        },
+        {
+          "code": "Lnight6569",
+          "label": "Plage Lnight de 65 à 69 dB",
+          "lower_db": 65
+        },
+        {
+          "code": "LnightGreaterThan70",
+          "label": "Valeur Lnight égale ou supérieure 70 dB",
+          "lower_db": 70
+        }
+      ],
+      "threshold_db": 50,
+      "estimated_population_exposed": 542.5756292386484,
+      "area_covered_m2": 1361572.0055596363,
+      "processing_seconds": 4.8
+    }
+  },
+  "method": "Intersection des polygones officiels par CATEGORY_CODE avec chaque secteur statistique; estimation de population au prorata de la surface, sous hypothèse de répartition uniforme dans chaque secteur.",
+  "caveat": "Résultats expérimentaux non publiés sur le site; ne constituent pas une localisation individuelle des habitants.",
+  "output_feature_counts": {
+    "sectors": 169,
+    "quartiers": 60,
+    "communes": 1
+  }
+}
