@@ -1,5 +1,7 @@
 """Experimental flood-hazard exposure calculation for Tournai only.
 
+Workflow trigger: isolated Tournai pilot, no changes to other published indicators.
+
 Uses the official Walloon 2 m flood-hazard raster. Each pixel is assigned to
 the statistical sector containing its centre; population is estimated by
 areal weighting within each sector. Outputs are isolated from production data
