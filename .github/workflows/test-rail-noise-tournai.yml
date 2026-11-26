@@ -9,7 +9,7 @@ on:
       - ".github/workflows/test-rail-noise-tournai.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: sta2re-rail-noise-tournai-experiment
