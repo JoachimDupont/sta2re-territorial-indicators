@@ -14,11 +14,11 @@
   "class_field": "FIRE_PROBA",
   "classes": [
     {
-      "value": "High",
+      "value": "Low",
       "label": "Faible"
     },
     {
-      "value": "Low",
+      "value": "Medium low",
       "label": "Moyen-faible"
     },
     {
@@ -26,8 +26,8 @@
       "label": "Moyen-élevé"
     },
     {
-      "value": "Medium low",
-      "label": "Elevé"
+      "value": "High",
+      "label": "Élevé"
     }
   ],
   "estimated_exposed_population": 13972.253469840623,
