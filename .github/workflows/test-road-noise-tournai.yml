@@ -1,0 +1,72 @@
+name: Experimental road noise - Tournai
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/test_road_noise_tournai.py"
+      - "scripts/download_road_noise_source.py"
+      - ".github/workflows/test-road-noise-tournai.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sta2re-road-noise-tournai-experiment
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Prepare Tournai study inputs
+        run: |
+          python scripts/identify_border_communes.py
+          python scripts/prepare_statbel_inputs.py
+      - name: Restore road GeoPackage cache
+        id: road-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/raw/noise/road_noise_2022.gpkg
+          key: sta2re-road-noise-gpkg-v1-${{ runner.os }}
+      - name: Download official road GeoPackage if cache missed
+        run: python scripts/download_road_noise_source.py
+      - name: Calculate experimental Tournai road exposure
+        run: python scripts/test_road_noise_tournai.py
+      - name: Publish Tournai road-noise data without replacing ICU
+        run: |
+          mkdir -p site/data
+          cp data/experimental/road_noise_tournai_communes_2026.geojson site/data/
+          cp data/experimental/road_noise_tournai_quartiers_2026.geojson site/data/
+          cp data/experimental/road_noise_tournai_sectors_2026.geojson site/data/
+          cp data/experimental/road_noise_tournai_qa_2026.json site/data/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/data/road_noise_tournai_*
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish experimental Tournai road-noise indicators [skip ci]"
+            git pull --rebase origin main
+            git push
+          fi
+      - name: Upload Tournai results
+        uses: actions/upload-artifact@v4
+        with:
+          name: road-noise-tournai-results
+          path: |
+            data/experimental/road_noise_tournai_communes_2026.geojson
+            data/experimental/road_noise_tournai_quartiers_2026.geojson
+            data/experimental/road_noise_tournai_sectors_2026.geojson
+            data/experimental/road_noise_tournai_qa_2026.json
+          if-no-files-found: error
+          retention-days: 30
